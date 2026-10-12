@@ -42,6 +42,7 @@ Os logs da fase `integration-test` precisam indicar a execução real de `jackco
 | Reconhecedores | `IdentifierRecognizerTest`, `IntegerRecognizerTest`, `StringRecognizerTest`, `SymbolRecognizerTest` | Lexemas, limites, comentários dentro de strings, caracteres especiais |
 | Trivia | `WhitespaceConsumerTest`, `LineCommentConsumerTest`, `BlockCommentConsumerTest`, `TriviaSkipperTest` | Descarte e erro de comentário sem fechamento |
 | Scanner completo | `JackTokenizerTest`, `LexicalExceptionTest` | Tokenização, posição, erros, isolamento |
+| Contrato público e dependências | `LexerPublicApiTest` | Uso externo do tokenizer, assinaturas, encapsulamento e referências explícitas entre pacotes |
 | XML | `TokenXmlWriterTest`, `XmlEscaperTest` | Layout oficial, escapes, XML 1.0 |
 | Entrada e saída | `JackFileResolverTest`, `JackSourceReaderTest`, `OutputPathResolverTest`, `TextFileWriterTest` | Ordenação, UTF-8 estrito, caminhos, colisões, links simbólicos e publicação |
 | Caso de uso | `TokenizeCommandTest`, `SourceProcessingExceptionTest` | Fail-fast, causas e arquivos responsáveis |
@@ -103,17 +104,17 @@ java -jar target/jackcompiler.jar parse Main.jack
 echo "$?"  # esperado: 2 para comando ainda indisponível
 ```
 
-## Evidência do incremento 21
+## Marcos de validação confirmados
 
-- Commit: [`091f66edcb2e6bfe6dbad118ccdbd4cfdc567114`](https://github.com/0zzmandias/jackcompiler/commit/091f66edcb2e6bfe6dbad118ccdbd4cfdc567114).
-- Execução local informada: **620 testes Surefire** e **10 testes Failsafe**, sem falhas, `BUILD SUCCESS`.
-- [GitHub Actions 38319030380](https://github.com/0zzmandias/jackcompiler/actions/runs/38319030380): `completed/success`, associado ao SHA acima.
+- **Incremento 21:** commit [`091f66e`](https://github.com/0zzmandias/jackcompiler/commit/091f66edcb2e6bfe6dbad118ccdbd4cfdc567114), 620 Surefire + 10 Failsafe locais, [CI 38319030380](https://github.com/0zzmandias/jackcompiler/actions/runs/38319030380) aprovada.
+- **Incremento 22:** commit [`3c87fa2`](https://github.com/0zzmandias/jackcompiler/commit/3c87fa23bd171c51d48f6df3fd6ab01b71a0e968), 620 Surefire + 10 Failsafe locais, [CI 38319995780](https://github.com/0zzmandias/jackcompiler/actions/runs/38319995780) aprovada.
+- **Correção de auditoria da API pública:** commit [`5f68a6d`](https://github.com/0zzmandias/jackcompiler/commit/5f68a6dd6e1393bb60fa578e85495e292484ed68), 625 Surefire + 10 Failsafe locais, [CI 38322081939](https://github.com/0zzmandias/jackcompiler/actions/runs/38322081939) aprovada.
 
-Essas evidências dizem respeito ao snapshot identificado, **não a um futuro commit documental ou à auditoria final**. A versão submetida deve ser validada novamente, conferindo SHA e execução da CI.
+Os números e o estado da CI se referem **aos commits citados**; a versão submetida deve ser validada novamente, com conferência do SHA exato e execução da CI.
 
-## Verificação documental antes de registrar o commit 22
+## Verificação documental durante a auditoria final
 
-Depois de salvar os quatro arquivos, conferir os caminhos citados e revisar o diff:
+Antes de liberar o snapshot final, conferir os caminhos citados, revisar o diff e repetir os testes:
 
 ```bash
 test -f README.md
@@ -121,6 +122,7 @@ test -f docs/architecture.md
 test -f docs/testing.md
 test -f docs/acceptance.md
 test -f src/test/java/jackcompiler/acceptance/OfficialTokenXmlCompatibilityTest.java
+test -f src/test/java/jackcompiler/contract/LexerPublicApiTest.java
 test -f src/test/java/jackcompiler/integration/JarExecutionIT.java
 test -f src/test/resources/nand2tetris/LICENSE
 git diff --check

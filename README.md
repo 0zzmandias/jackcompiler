@@ -2,6 +2,8 @@
 
 Projeto acadêmico da disciplina de Compiladores, desenvolvido em Java 21 para a linguagem Jack, utilizada no curso [nand2tetris](https://www.nand2tetris.org/).
 
+**Repositório:** [github.com/0zzmandias/jackcompiler](https://github.com/0zzmandias/jackcompiler).
+
 ## Integrante
 
 **Helton Alves Sá**  
@@ -124,6 +126,7 @@ src/test/java/jackcompiler/
 ├── acceptance/   # comparação com XMLs oficiais
 ├── application/  # testes do caso de uso
 ├── cli/          # argumentos, CLI e programas oficiais
+├── contract/     # API pública e limites de dependências
 ├── integration/  # execução do JAR empacotado
 ├── io/
 ├── lexer/
@@ -141,7 +144,7 @@ A separação entre pacotes e seus contratos está descrita em [docs/architectur
 
 ## Testes e referências oficiais
 
-No marco local do incremento 21, `mvn clean verify` executou **620 testes Surefire e 10 testes Failsafe**, todos aprovados. O GitHub Actions também aprovou o commit [`091f66e`](https://github.com/0zzmandias/jackcompiler/commit/091f66edcb2e6bfe6dbad118ccdbd4cfdc567114), pela [execução 38319030380](https://github.com/0zzmandias/jackcompiler/actions/runs/38319030380). Esses números identificam aquele marco, **não antecipam o resultado do futuro commit de documentação ou da auditoria final**.
+Após a correção de auditoria do contrato público, a execução local de `mvn clean verify` passou em **625 testes Surefire e 10 testes Failsafe**, sem falhas. A CI confirmou o mesmo conjunto de verificações no commit [`5f68a6d`](https://github.com/0zzmandias/jackcompiler/commit/5f68a6dd6e1393bb60fa578e85495e292484ed68), pela [execução 38322081939](https://github.com/0zzmandias/jackcompiler/actions/runs/38322081939). Essas evidências não substituem a validação do futuro snapshot final nem a auditoria de originalidade.
 
 Os recursos contêm sete pares `.jack`/`*T.xml` (programas `Main`, `Square` e `SquareGame` em `Square` e `ExpressionLessSquare`, além de `ArrayTest/Main`), mais `LICENSE`. Origem: [nand2tetris/projects](https://github.com/nand2tetris/projects), revisão `6097b770073025891fb8b7a22aa3b72f61f81277`. Os arquivos de referência são preservados sem modificações de conteúdo. As comparações de XML admitem **somente normalização de terminadores de linha** da referência, mantendo a ordem dos tokens, os lexemas, os espaços e os escapes.
 
@@ -158,4 +161,4 @@ A numeração planejada é de 01 a 22 para a Parte 1 e 23 a 38 para a Parte 2; o
 
 ## Pendências antes da entrega formal da Parte 1
 
-Apesar de os testes automatizados e a CI do incremento 21 terem sido aprovados, **a versão final ainda requer** auditoria integral dos requisitos, segurança de saída, documentação, compatibilidade com fixtures, arquitetura, empacotamento, histórico e originalidade/autoria. Somente após aprovação da auditoria será criada a tag `v1.0.0-lexer`, preparado o ZIP do snapshot correspondente e realizada a submissão no SIGAA com o link deste repositório. Nenhuma dessas etapas é considerada concluída por este README.
+Apesar de os testes automatizados e a CI da correção de auditoria terem sido aprovados, **a versão final ainda requer** auditoria integral dos requisitos, segurança de saída, documentação, compatibilidade com fixtures, arquitetura, empacotamento, histórico e originalidade/autoria. Somente após aprovação da auditoria será criada a tag `v1.0.0-lexer`, preparado o ZIP do snapshot correspondente e realizada a submissão no SIGAA com o link deste repositório. Nenhuma dessas etapas é considerada concluída por este README.

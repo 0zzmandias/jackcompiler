@@ -2,9 +2,9 @@
 
 ## Escopo e interpretação
 
-O escopo entregue até o incremento 21 é o **analisador léxico Jack**, com CLI `tokenize`, saída XML oficial e testes automatizados. O parser, a árvore sintática XML e o comando `parse` pertencem à Parte 2 e não estão implementados.
+O escopo implementado até a correção de auditoria do contrato público é o **analisador léxico Jack**, com CLI `tokenize`, saída XML oficial e testes automatizados. O parser, a árvore sintática XML e o comando `parse` pertencem à Parte 2 e não estão implementados.
 
-**Status das evidências:** o commit `091f66e` passou em 620 testes Surefire e 10 Failsafe localmente e teve [CI aprovada](https://github.com/0zzmandias/jackcompiler/actions/runs/38319030380). Isso prova a execução das verificações relacionadas naquele snapshot, não a conclusão da auditoria integral, da tag ou da submissão.
+**Status das evidências:** o commit [`5f68a6d`](https://github.com/0zzmandias/jackcompiler/commit/5f68a6dd6e1393bb60fa578e85495e292484ed68) passou em 625 testes Surefire e 10 Failsafe localmente e teve [CI aprovada](https://github.com/0zzmandias/jackcompiler/actions/runs/38322081939). Isso comprova as verificações executadas naquele snapshot, não a conclusão da auditoria integral, da tag ou da submissão.
 
 ## Matriz de requisitos e evidências
 
@@ -18,7 +18,8 @@ O escopo entregue até o incremento 21 é o **analisador léxico Jack**, com CLI
 | Strings, conteúdo literal, EOF e quebra inválida | `StringRecognizer.java` | `StringRecognizerTest`, `JackTokenizerTest` |
 | Comentários `//`, `/* ... */`, `/** ... */` e whitespace | Consumidores e `TriviaSkipper.java` | Testes individuais, `TriviaSkipperTest` |
 | Unicode e CR/LF/CRLF, posições baseadas em 1 | `SourceCursor.java`, `SourcePosition.java` | `SourceCursorTest`, `SourcePositionTest` |
-| Scanner sem CLI/I/O/XML, resultado imutável e sem token EOF artificial | `JackTokenizer.java`, `TokenizationResult.java` | `JackTokenizerTest`, `TokenizationResultTest`; dependências ainda sujeitas à auditoria |
+| Scanner sem CLI/I/O/XML, resultado imutável e sem token EOF artificial | `JackTokenizer.java`, `TokenizationResult.java` | `JackTokenizerTest`, `TokenizationResultTest`, `LexerPublicApiTest`; auditoria manual ainda pendente |
+| API pública reutilizável e limites de dependência | `JackTokenizer.java`, `LexicalException.java`, tipos em `token/` | `LexerPublicApiTest` (cinco testes); checagem textual e auditoria complementar pendente |
 | XML de terminais, espaços e escapes | `TokenXmlWriter.java`, `XmlEscaper.java` | `TokenXmlWriterTest`, `XmlEscaperTest` |
 | Rejeição de caracteres XML 1.0 inválidos | `XmlEscaper.java` | `XmlEscaperTest`, `TokenizeCommandTest` |
 | XML oficial de `Main`, `Square`, `SquareGame` e `ArrayTest` | Fluxo `JackTokenizer` → `TokenXmlWriter` | `ReferenceProgramsTest`, `OfficialTokenXmlCompatibilityTest` |
@@ -47,7 +48,8 @@ A comparação admite somente normalização de CRLF/CR para LF **no texto da re
 |---|---|---|
 | Incremento 20 | 605 testes locais, JAR manual; [CI 38317687904](https://github.com/0zzmandias/jackcompiler/actions/runs/38317687904) | Aprovado no commit `49cd96e` |
 | Incremento 21 | 620 Surefire + 10 Failsafe locais; [CI 38319030380](https://github.com/0zzmandias/jackcompiler/actions/runs/38319030380) | Aprovado no commit `091f66e` |
-| Incremento 22 | README e três documentos, revisão documental e nova execução do `mvn clean verify` | **Pendente até validação e CI do novo commit** |
+| Incremento 22 | README e três documentos; 620 Surefire + 10 Failsafe locais; [CI 38319995780](https://github.com/0zzmandias/jackcompiler/actions/runs/38319995780) | Aprovado no commit `3c87fa2` |
+| Correção de auditoria da API pública | `LexerPublicApiTest`, cinco testes novos; 625 Surefire + 10 Failsafe locais; [CI 38322081939](https://github.com/0zzmandias/jackcompiler/actions/runs/38322081939) | Aprovada no commit `5f68a6d` |
 | Auditoria final | Requisitos, arquitetura, segurança, fontes, testes, empacotamento, autoria e submissão | **Pendente** |
 | Tag `v1.0.0-lexer` e ZIP | Exigem auditoria integral aprovada | **Não realizados** |
 | Parte 2 | Somente após submissão da Parte 1 confirmada | **Não iniciada** |

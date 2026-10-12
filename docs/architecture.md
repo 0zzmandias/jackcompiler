@@ -1,6 +1,6 @@
 # Arquitetura — Parte 1 (analisador léxico)
 
-Este documento descreve a arquitetura **implementada** do JackCompiler até o incremento 21, no commit `091f66e`. A Parte 2 permanece planejada, não implementada.
+Este documento descreve a arquitetura **implementada** do JackCompiler, incluindo a correção de testes de auditoria do commit [`5f68a6d`](https://github.com/0zzmandias/jackcompiler/commit/5f68a6dd6e1393bb60fa578e85495e292484ed68). A Parte 2 permanece planejada, não implementada.
 
 ## Limites e direção das dependências
 
@@ -82,4 +82,4 @@ O futuro analisador sintático poderá reutilizar `JackTokenizer`, `Token`, `Tok
 
 ## Verificações arquiteturais
 
-A separação de pacotes está sujeita à auditoria de importações e APIs públicas antes da tag. Os testes existentes de tokens, scanner, serialização, I/O e caso de uso são executados por `mvn clean verify`. Consulte [testing.md](testing.md) e [acceptance.md](acceptance.md) para evidências e pendências de auditoria.
+`src/test/java/jackcompiler/contract/LexerPublicApiTest.java` acrescenta cinco testes de contrato, executados por `mvn clean verify`. Eles exercitam o tokenizer de fora do pacote `lexer`, conferem a visibilidade da API pública e das classes internas, verificam exceções posicionadas e detectam referências explícitas a pacotes internos não permitidos no código-fonte de produção. Esta checagem textual de dependências **não substitui** a auditoria arquitetural manual nem a inspeção de mecanismos indiretos de acesso. Consulte [testing.md](testing.md) e [acceptance.md](acceptance.md) para evidências e pendências.
