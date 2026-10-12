@@ -1,4 +1,4 @@
-package jackcompiler;
+package jackcompiler.cli;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -66,13 +66,15 @@ class ReferenceProgramsTest {
   void commandLineMatchesOfficialReference(String suite, String name) throws IOException {
     Path directory = Files.createDirectory(tempDir.resolve(suite));
     Path source = directory.resolve(name + ".jack");
+    Path outputDirectory = directory.resolve("generated");
 
     byte[] original = readBytes(suite, name + ".jack");
     Files.write(source, original);
 
-    Execution execution = execute("tokenize", source.toString());
+    Execution execution =
+        execute("tokenize", source.toString(), "--output-dir", outputDirectory.toString());
 
-    Path output = directory.resolve(name + "T.xml");
+    Path output = outputDirectory.resolve(name + "T.xml");
 
     assertEquals(0, execution.status());
     assertEquals("", execution.stderr());
@@ -89,11 +91,12 @@ class ReferenceProgramsTest {
   @Test
   void processesAllSevenReferenceProgramsInOneDirectory() throws IOException {
     Map<Path, String> expectedOutputs = new HashMap<>();
+    Path outputDirectory = tempDir.resolve("generated");
 
     for (Example example : EXAMPLES) {
       String stem = example.suite() + "_" + example.name();
       Path source = tempDir.resolve(stem + ".jack");
-      Path output = tempDir.resolve(stem + "T.xml");
+      Path output = outputDirectory.resolve(stem + "T.xml");
 
       Files.write(source, readBytes(example.suite(), example.name() + ".jack"));
 
@@ -101,17 +104,17 @@ class ReferenceProgramsTest {
           output, normalizeLineEndings(readText(example.suite(), example.name() + "T.xml")));
     }
 
-    Execution execution = execute("tokenize", tempDir.toString());
+    Execution execution =
+        execute("tokenize", tempDir.toString(), "--output-dir", outputDirectory.toString());
 
     assertEquals(0, execution.status());
     assertEquals("", execution.stderr());
 
-    // Output order follows source-file names, not generated XML names.
     List<Path> orderedOutputs =
         EXAMPLES.stream()
             .map(example -> example.suite() + "_" + example.name())
             .sorted()
-            .map(stem -> tempDir.resolve(stem + "T.xml"))
+            .map(stem -> outputDirectory.resolve(stem + "T.xml"))
             .toList();
 
     String expectedConsoleOutput =
@@ -143,7 +146,6 @@ class ReferenceProgramsTest {
     String resource = RESOURCE_ROOT + suite + "/" + name;
 
     try (InputStream input = ReferenceProgramsTest.class.getResourceAsStream(resource)) {
-
       if (input == null) {
         throw new IOException("Missing reference resource: " + resource);
       }
@@ -162,8 +164,7 @@ class ReferenceProgramsTest {
 
     try (PrintStream out = new PrintStream(stdout, true, StandardCharsets.UTF_8);
         PrintStream err = new PrintStream(stderr, true, StandardCharsets.UTF_8)) {
-
-      int status = Main.run(arguments, out, err);
+      int status = JackCompiler.run(arguments, out, err);
 
       return new Execution(
           status, stdout.toString(StandardCharsets.UTF_8), stderr.toString(StandardCharsets.UTF_8));
