@@ -1,3 +1,4 @@
+
 # JackCompiler
 
 Projeto acadêmico da disciplina de Compiladores para a linguagem Jack, utilizada no curso nand2tetris.
@@ -18,25 +19,37 @@ O JackCompiler será desenvolvido em duas entregas:
 
 - Java 21
 - Apache Maven
-- Git e GitHub
+- JUnit Jupiter
+- Spotless (Google Java Style)
+- Git e GitHub Actions
 
-## Construção
+## Construção e testes
 
 Pré-requisitos:
 
 - JDK 21
 - Apache Maven
 
-Na raiz do projeto, execute:
+Na raiz do projeto:
 
 ```bash
 mvn clean verify
 ```
 
+O comando executa a verificação de formatação, a compilação e os testes automatizados.
+
+Para aplicar a formatação Java:
+
+```bash
+mvn spotless:apply
+```
+
+A integração contínua utiliza GitHub Actions.
+
 ## Estado do desenvolvimento
 
-**Parte 1:** estrutura inicial do projeto em desenvolvimento.
+**Parte 1:** infraestrutura inicial em desenvolvimento.
 
 **Parte 2:** implementação ainda não iniciada.
 
-Os comandos de execução, os testes automatizados e os resultados de validação serão documentados conforme as funcionalidades forem implementadas.
+Os comandos da aplicação e os resultados de validação serão documentados conforme as funcionalidades forem implementadas.
