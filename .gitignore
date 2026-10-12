@@ -1,0 +1,23 @@
+# Maven
+/target/
+
+# Java
+*.class
+
+# Logs
+*.log
+
+# Arquivos temporarios de editores
+*~
+*.swp
+*.kate-swp
+
+# Configuracoes locais de IDEs
+.idea/
+.vscode/
+.kateproject.local
+.kateproject.notes
+
+# Arquivos especificos de sistemas operacionais
+.DS_Store
+Thumbs.db
