@@ -34,7 +34,7 @@ import org.junit.jupiter.params.provider.MethodSource;
  */
 class ReferenceProgramsTest {
 
-  private static final String RESOURCE_ROOT = "/jackcompiler/reference/";
+  private static final String RESOURCE_ROOT = "/nand2tetris/";
 
   private static final List<Example> EXAMPLES =
       List.of(
