@@ -1,0 +1,3 @@
+
+# Preserve upstream nand2tetris fixtures exactly, including CRLF line endings.
+src/test/resources/jackcompiler/reference/** -text whitespace=cr-at-eol
