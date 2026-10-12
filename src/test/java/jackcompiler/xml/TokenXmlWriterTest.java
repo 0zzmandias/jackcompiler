@@ -12,9 +12,12 @@ import jackcompiler.token.TokenType;
 import jackcompiler.token.TokenizationResult;
 import java.io.StringReader;
 import java.util.List;
+import java.util.stream.Stream;
 import javax.xml.parsers.DocumentBuilderFactory;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.xml.sax.InputSource;
 
@@ -227,6 +230,45 @@ class TokenXmlWriterTest {
 
     assertEquals(originalTokens, result.tokens());
     assertEquals(originalEnd, result.endPosition());
+  }
+
+  @ParameterizedTest
+  @MethodSource("formattedTerminals")
+  void formatsStandaloneTerminalsForFutureSyntaxXmlWriter(
+      TokenType type, String value, String expected) {
+    Token token = new Token(type, value, new SourcePosition(2, 5));
+
+    String formatted = TokenXmlWriter.formatToken(token);
+
+    assertEquals(expected, formatted);
+    assertFalse(formatted.contains("\n"));
+    assertFalse(formatted.contains("\r"));
+  }
+
+  @Test
+  void rejectsNullTokenWhenFormattingStandaloneTerminal() {
+    assertThrows(NullPointerException.class, () -> TokenXmlWriter.formatToken(null));
+  }
+
+  @Test
+  void rejectsInvalidXmlCharacterWhenFormattingStandaloneTerminal() {
+    Token token = new Token(TokenType.STRING_CONSTANT, "a\u0001b", new SourcePosition(1, 1));
+
+    assertThrows(IllegalArgumentException.class, () -> TokenXmlWriter.formatToken(token));
+  }
+
+  private static Stream<Arguments> formattedTerminals() {
+    return Stream.of(
+        Arguments.of(TokenType.KEYWORD, "class", "<keyword> class </keyword>"),
+        Arguments.of(TokenType.IDENTIFIER, "Main", "<identifier> Main </identifier>"),
+        Arguments.of(TokenType.SYMBOL, "<", "<symbol> &lt; </symbol>"),
+        Arguments.of(
+            TokenType.INTEGER_CONSTANT, "00042", "<integerConstant> 00042 </integerConstant>"),
+        Arguments.of(
+            TokenType.STRING_CONSTANT,
+            "a&<>\"'",
+            "<stringConstant> a&amp;&lt;&gt;&quot;&apos; </stringConstant>"),
+        Arguments.of(TokenType.STRING_CONSTANT, "", "<stringConstant>  </stringConstant>"));
   }
 
   private static TokenizationResult resultWithString(String value) {
