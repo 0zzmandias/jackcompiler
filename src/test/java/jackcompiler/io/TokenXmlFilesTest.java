@@ -137,11 +137,11 @@ class TokenXmlFilesTest {
 
     Files.writeString(source, "class Main { let x = 5 < 6; }");
 
-    JackSourceFiles sourceFiles = new JackSourceFiles();
+    JackSourceReader sourceReader = new JackSourceReader();
     JackTokenizer tokenizer = new JackTokenizer();
     TokenXmlWriter serializer = new TokenXmlWriter();
 
-    String jackSource = sourceFiles.read(source);
+    String jackSource = sourceReader.read(source);
     String xml = serializer.toXml(tokenizer.tokenize(jackSource));
 
     Path output = xmlFiles.write(source, xml);

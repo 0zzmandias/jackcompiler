@@ -1,6 +1,7 @@
 package jackcompiler.cli;
 
-import jackcompiler.io.JackSourceFiles;
+import jackcompiler.io.JackFileResolver;
+import jackcompiler.io.JackSourceReader;
 import jackcompiler.io.TokenXmlFiles;
 import jackcompiler.lexer.JackTokenizer;
 import jackcompiler.xml.TokenXmlWriter;
@@ -13,7 +14,8 @@ import java.util.Objects;
 /** Executes the complete Jack tokenization and XML output workflow. */
 public final class TokenizeCommand {
 
-  private final JackSourceFiles sourceFiles = new JackSourceFiles();
+  private final JackFileResolver fileResolver = new JackFileResolver();
+  private final JackSourceReader sourceReader = new JackSourceReader();
   private final JackTokenizer tokenizer = new JackTokenizer();
   private final TokenXmlWriter xmlWriter = new TokenXmlWriter();
   private final TokenXmlFiles xmlFiles = new TokenXmlFiles();
@@ -33,8 +35,8 @@ public final class TokenizeCommand {
 
     List<Path> outputs = new ArrayList<>();
 
-    for (Path sourceFile : sourceFiles.resolve(input)) {
-      String source = sourceFiles.read(sourceFile);
+    for (Path sourceFile : fileResolver.resolve(input)) {
+      String source = sourceReader.read(sourceFile);
       String xml = xmlWriter.toXml(tokenizer.tokenize(source));
 
       outputs.add(xmlFiles.write(sourceFile, xml));

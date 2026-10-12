@@ -5,8 +5,6 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import jackcompiler.lexer.JackTokenizer;
-import jackcompiler.token.TokenType;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -18,17 +16,17 @@ import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 
-class JackSourceFilesTest {
+class JackFileResolverTest {
 
   @TempDir Path tempDir;
 
-  private final JackSourceFiles sourceFiles = new JackSourceFiles();
+  private final JackFileResolver resolver = new JackFileResolver();
 
   @Test
   void resolvesIndividualJackFile() throws IOException {
     Path file = write("Main.jack", "class Main {}");
 
-    assertEquals(List.of(file), sourceFiles.resolve(file));
+    assertEquals(List.of(file), resolver.resolve(file));
   }
 
   @Test
@@ -36,7 +34,7 @@ class JackSourceFilesTest {
     Path file = write("Main.jack", "class Main {}");
     Path relative = Path.of("").toAbsolutePath().relativize(file);
 
-    assertEquals(List.of(file), sourceFiles.resolve(relative));
+    assertEquals(List.of(file), resolver.resolve(relative));
   }
 
   @Test
@@ -45,7 +43,7 @@ class JackSourceFilesTest {
     Path main = write("Main.jack", "class Main {}");
     Path alpha = write("Alpha.jack", "class Alpha {}");
 
-    assertEquals(List.of(alpha, main, zebra), sourceFiles.resolve(tempDir));
+    assertEquals(List.of(alpha, main, zebra), resolver.resolve(tempDir));
   }
 
   @Test
@@ -56,7 +54,7 @@ class JackSourceFilesTest {
     write("Main.JACK", "uppercase extension");
     write("Main.jack.bak", "backup");
 
-    assertEquals(List.of(main), sourceFiles.resolve(tempDir));
+    assertEquals(List.of(main), resolver.resolve(tempDir));
   }
 
   @Test
@@ -66,7 +64,7 @@ class JackSourceFilesTest {
 
     Files.writeString(nestedDirectory.resolve("Other.jack"), "class Other {}");
 
-    assertEquals(List.of(main), sourceFiles.resolve(tempDir));
+    assertEquals(List.of(main), resolver.resolve(tempDir));
   }
 
   @Test
@@ -74,14 +72,14 @@ class JackSourceFilesTest {
     Path directory = Files.createDirectory(tempDir.resolve("Examples.jack"));
     Path source = Files.writeString(directory.resolve("Main.jack"), "class Main {}");
 
-    assertEquals(List.of(source), sourceFiles.resolve(directory));
+    assertEquals(List.of(source), resolver.resolve(directory));
   }
 
   @Test
   void returnsUnmodifiableSourceList() throws IOException {
     write("Main.jack", "class Main {}");
 
-    List<Path> sources = sourceFiles.resolve(tempDir);
+    List<Path> sources = resolver.resolve(tempDir);
 
     assertThrows(
         UnsupportedOperationException.class, () -> sources.add(tempDir.resolve("Other.jack")));
@@ -91,7 +89,7 @@ class JackSourceFilesTest {
   void rejectsMissingInputPath() {
     Path missing = tempDir.resolve("Missing.jack");
 
-    assertThrows(NoSuchFileException.class, () -> sourceFiles.resolve(missing));
+    assertThrows(NoSuchFileException.class, () -> resolver.resolve(missing));
   }
 
   @ParameterizedTest
@@ -100,14 +98,14 @@ class JackSourceFilesTest {
     Path file = write(fileName, "content");
 
     IllegalArgumentException error =
-        assertThrows(IllegalArgumentException.class, () -> sourceFiles.resolve(file));
+        assertThrows(IllegalArgumentException.class, () -> resolver.resolve(file));
 
     assertTrue(error.getMessage().contains(".jack"));
   }
 
   @Test
   void rejectsEmptyDirectory() {
-    IOException error = assertThrows(IOException.class, () -> sourceFiles.resolve(tempDir));
+    IOException error = assertThrows(IOException.class, () -> resolver.resolve(tempDir));
 
     assertTrue(error.getMessage().contains("No .jack files"));
   }
@@ -117,86 +115,25 @@ class JackSourceFilesTest {
     write("README.md", "documentation");
     write("Main.JACK", "class Main {}");
 
-    IOException error = assertThrows(IOException.class, () -> sourceFiles.resolve(tempDir));
+    IOException error = assertThrows(IOException.class, () -> resolver.resolve(tempDir));
 
     assertTrue(error.getMessage().contains("No .jack files"));
-  }
-
-  @Test
-  void readsUtf8SourceText() throws IOException {
-    String original = "class Main { /* Olá 😀 */ }";
-    Path file = write("Main.jack", original);
-
-    assertEquals(original, sourceFiles.read(file));
-  }
-
-  @Test
-  void preservesOriginalLineEndings() throws IOException {
-    String original = "class Main {\r\n\treturn;\r\n}\n";
-    Path file = write("Main.jack", original);
-
-    String loaded = sourceFiles.read(file);
-
-    assertEquals(original, loaded);
-    assertTrue(loaded.contains("\r\n"));
-    assertTrue(loaded.endsWith("\n"));
-  }
-
-  @Test
-  void readsEmptyJackFile() throws IOException {
-    Path file = write("Empty.jack", "");
-
-    assertEquals("", sourceFiles.read(file));
-  }
-
-  @Test
-  void integratesFileReadingWithJackTokenizer() throws IOException {
-    Path file = write("Main.jack", "class Main {}");
-
-    Path selected = sourceFiles.resolve(file).get(0);
-    String source = sourceFiles.read(selected);
-    var result = new JackTokenizer().tokenize(source);
-
-    assertEquals(
-        List.of("class", "Main", "{", "}"),
-        result.tokens().stream().map(token -> token.value()).toList());
-    assertEquals(TokenType.KEYWORD, result.tokens().get(0).type());
-    assertEquals(TokenType.IDENTIFIER, result.tokens().get(1).type());
-  }
-
-  @Test
-  void rejectsReadingMissingFile() {
-    Path missing = tempDir.resolve("Missing.jack");
-
-    assertThrows(NoSuchFileException.class, () -> sourceFiles.read(missing));
-  }
-
-  @Test
-  void rejectsReadingNonJackFile() throws IOException {
-    Path file = write("notes.txt", "content");
-
-    assertThrows(IllegalArgumentException.class, () -> sourceFiles.read(file));
   }
 
   @Test
   void acceptsIndependentRepeatedResolutions() throws IOException {
     Path first = write("A.jack", "class A {}");
 
-    assertEquals(List.of(first), sourceFiles.resolve(tempDir));
+    assertEquals(List.of(first), resolver.resolve(tempDir));
 
     Path second = write("B.jack", "class B {}");
 
-    assertEquals(List.of(first, second), sourceFiles.resolve(tempDir));
+    assertEquals(List.of(first, second), resolver.resolve(tempDir));
   }
 
   @Test
   void rejectsNullResolveInput() {
-    assertThrows(NullPointerException.class, () -> sourceFiles.resolve(null));
-  }
-
-  @Test
-  void rejectsNullReadInput() {
-    assertThrows(NullPointerException.class, () -> sourceFiles.read(null));
+    assertThrows(NullPointerException.class, () -> resolver.resolve(null));
   }
 
   @Test
@@ -204,7 +141,7 @@ class JackSourceFilesTest {
     Path main = write("Main.jack", "class Main {}");
     Files.createDirectory(tempDir.resolve("Nested.jack"));
 
-    List<Path> sources = sourceFiles.resolve(tempDir);
+    List<Path> sources = resolver.resolve(tempDir);
 
     assertEquals(List.of(main), sources);
     assertFalse(sources.contains(tempDir.resolve("Nested.jack")));
