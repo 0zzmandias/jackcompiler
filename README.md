@@ -88,7 +88,7 @@ O analisador reconhece **21 palavras reservadas** e **19 símbolos** oficiais da
 
 **Símbolos reconhecidos:** `{ } ( ) [ ] . , ; + - * / & | < > = ~`.
 
-**Esclarecimento sobre `[` e `]`:** os dois colchetes integram expressamente o conjunto oficial de **19 símbolos Jack**, sendo usados, por exemplo, no acesso a arrays (`a[i]`). Sua inclusão é necessária para compatibilidade com a especificação e com os exemplos oficiais, incluindo `ArrayTest`. Não são símbolos adicionais criados pelo projeto.
+**Esclarecimento sobre `[` e `]`:** a lista de símbolos apresentada no item **“Reconhecimento de Tokens”** do enunciado da Entrega Parcial 1 (PDF 1) não menciona os colchetes `[` e `]`. Entretanto, esses dois caracteres integram o conjunto oficial de **19 símbolos da linguagem Jack**, sendo utilizados, por exemplo, no acesso a elementos de arrays (`a[i]`). Por esse motivo, sua ausência na lista do enunciado foi interpretada como uma omissão, e ambos foram incluídos intencionalmente na implementação. Essa decisão mantém a compatibilidade com a especificação oficial da linguagem e com os programas de referência do nand2tetris, incluindo `ArrayTest`. **Portanto, não se trata de uma extensão da linguagem nem da implementação de símbolos adicionais aos previstos em Jack.**
 
 Regras relevantes: inteiros de `0` a `32767`, preservando o lexema; identificadores com início em letra ASCII ou `_`, seguidos por letras ASCII, dígitos ou `_`; strings delimitadas por aspas duplas, sem quebra de linha; espaços e comentários `//`, `/* ... */` e `/** ... */` descartados. O cursor trata LF, CRLF e CR como uma quebra lógica de linha e acompanha posições a partir de 1, por pontos de código Unicode.
 
