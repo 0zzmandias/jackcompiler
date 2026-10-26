@@ -33,7 +33,7 @@ class LexerPublicApiTest {
       Map.of(
           "token", Set.of(),
           "lexer", Set.of("token"),
-          "xml", Set.of("token"),
+          "xml", Set.of("token", "syntax"),
           "io", Set.of(),
           "application", Set.of("lexer", "token", "xml", "io"),
           "cli", Set.of("application", "lexer", "token"));
