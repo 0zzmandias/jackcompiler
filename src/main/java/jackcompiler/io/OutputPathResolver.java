@@ -11,13 +11,15 @@ import java.util.Optional;
 public final class OutputPathResolver {
 
   private static final String JACK_EXTENSION = ".jack";
-  private static final Path DEFAULT_OUTPUT_DIRECTORY = Path.of("target", "generated-tokens");
+  private static final Path DEFAULT_TOKEN_OUTPUT_DIRECTORY = Path.of("target", "generated-tokens");
+  private static final Path DEFAULT_SYNTAX_OUTPUT_DIRECTORY = Path.of("target", "generated-parser");
 
   /**
    * Resolves the destination of generated output for a Jack source.
    *
-   * <p>If no directory is supplied, the output goes into target/generated-tokens relative to the
-   * working directory. No directories or files are created here.
+   * <p>Token XML defaults to target/generated-tokens and syntax XML defaults to
+   * target/generated-parser, both relative to the working directory. A custom output directory
+   * overrides the default for either kind. No directories or files are created here.
    *
    * @param source Jack source file
    * @param outputDirectory optional user-selected directory
@@ -45,13 +47,19 @@ public final class OutputPathResolver {
           "Source file must have a nonempty name and the .jack extension: " + sourcePath);
     }
 
-    Path directory = outputDirectory.orElse(DEFAULT_OUTPUT_DIRECTORY).toAbsolutePath().normalize();
+    Path defaultDirectory =
+        switch (kind) {
+          case TOKEN_XML -> DEFAULT_TOKEN_OUTPUT_DIRECTORY;
+          case SYNTAX_XML -> DEFAULT_SYNTAX_OUTPUT_DIRECTORY;
+        };
 
+    Path directory = outputDirectory.orElse(defaultDirectory).toAbsolutePath().normalize();
     String baseName = name.substring(0, name.length() - JACK_EXTENSION.length());
 
     String suffix =
         switch (kind) {
           case TOKEN_XML -> "T.xml";
+          case SYNTAX_XML -> "P.xml";
         };
 
     Path destination = directory.resolve(baseName + suffix);

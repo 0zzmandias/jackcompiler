@@ -128,4 +128,105 @@ class OutputPathResolverTest {
 
     assertEquals("class Main {}", Files.readString(source));
   }
+
+  @Test
+  void resolvesSyntaxXmlToItsOwnDefaultDirectory() throws IOException {
+    Path source = tempDir.resolve("Main.jack");
+
+    Path actual = resolver.resolve(source, Optional.empty(), OutputKind.SYNTAX_XML);
+
+    assertEquals(
+        Path.of("target", "generated-parser", "MainP.xml").toAbsolutePath().normalize(), actual);
+  }
+
+  @Test
+  void resolvesCustomSyntaxXmlOutputDirectory() throws IOException {
+    Path source = tempDir.resolve("Main.jack");
+    Path directory = tempDir.resolve("output");
+
+    assertEquals(
+        directory.resolve("MainP.xml"),
+        resolver.resolve(source, Optional.of(directory), OutputKind.SYNTAX_XML));
+  }
+
+  @Test
+  void normalizesCustomRelativeSyntaxXmlDirectory() throws IOException {
+    Path source = tempDir.resolve("Main.jack");
+    Path relative = Path.of("outputs", "subfolder", "..");
+
+    assertEquals(
+        Path.of("outputs", "MainP.xml").toAbsolutePath().normalize(),
+        resolver.resolve(source, Optional.of(relative), OutputKind.SYNTAX_XML));
+  }
+
+  @Test
+  void preservesUnicodeAndDotsInSyntaxXmlFileName() throws IOException {
+    Path source = tempDir.resolve("Olá.test.jack");
+
+    assertEquals(
+        tempDir.resolve("out").resolve("Olá.testP.xml"),
+        resolver.resolve(source, Optional.of(tempDir.resolve("out")), OutputKind.SYNTAX_XML));
+  }
+
+  @Test
+  void doesNotCreateSyntaxXmlOutputDirectoryOrFile() throws IOException {
+    Path directory = tempDir.resolve("not-created");
+    Path source = tempDir.resolve("Main.jack");
+
+    Path destination = resolver.resolve(source, Optional.of(directory), OutputKind.SYNTAX_XML);
+
+    assertFalse(Files.exists(directory));
+    assertFalse(Files.exists(destination));
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = {"Main.txt", "Main.JACK", "Main.jack.bak", "Main", ".jack"})
+  void rejectsInvalidSyntaxXmlSourceNames(String name) {
+    Path source = tempDir.resolve(name);
+
+    assertThrows(
+        IllegalArgumentException.class,
+        () -> resolver.resolve(source, Optional.empty(), OutputKind.SYNTAX_XML));
+  }
+
+  @Test
+  void rejectsHardLinkAliasForSyntaxXmlDestination() throws IOException {
+    Path source = Files.writeString(tempDir.resolve("Main.jack"), "class Main {}");
+
+    Files.createLink(tempDir.resolve("MainP.xml"), source);
+
+    IOException error =
+        assertThrows(
+            IOException.class,
+            () -> resolver.resolve(source, Optional.of(tempDir), OutputKind.SYNTAX_XML));
+
+    assertTrue(error.getMessage().contains("aliases the source"));
+    assertEquals("class Main {}", Files.readString(source));
+  }
+
+  @Test
+  void rejectsSymbolicLinkAliasForSyntaxXmlDestination() throws IOException {
+    Path source = Files.writeString(tempDir.resolve("Main.jack"), "class Main {}");
+
+    Files.createSymbolicLink(tempDir.resolve("MainP.xml"), source);
+
+    assertThrows(
+        IOException.class,
+        () -> resolver.resolve(source, Optional.of(tempDir), OutputKind.SYNTAX_XML));
+
+    assertEquals("class Main {}", Files.readString(source));
+  }
+
+  @Test
+  void keepsTokenAndSyntaxXmlDestinationsDistinct() throws IOException {
+    Path source = tempDir.resolve("Main.jack");
+    Path directory = tempDir.resolve("out");
+
+    Path tokens = resolver.resolve(source, Optional.of(directory), OutputKind.TOKEN_XML);
+    Path syntax = resolver.resolve(source, Optional.of(directory), OutputKind.SYNTAX_XML);
+
+    assertEquals(directory.resolve("MainT.xml"), tokens);
+    assertEquals(directory.resolve("MainP.xml"), syntax);
+    assertFalse(tokens.equals(syntax));
+  }
 }

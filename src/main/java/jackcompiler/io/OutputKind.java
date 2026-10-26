@@ -1,6 +1,7 @@
 package jackcompiler.io;
 
-/** Kinds of generated compiler output supported by Part 1. */
+/** Kinds of generated compiler output. */
 public enum OutputKind {
-  TOKEN_XML
+  TOKEN_XML,
+  SYNTAX_XML
 }

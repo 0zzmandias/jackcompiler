@@ -35,7 +35,7 @@ class LexerPublicApiTest {
           "lexer", Set.of("token"),
           "xml", Set.of("token", "syntax"),
           "io", Set.of(),
-          "application", Set.of("lexer", "token", "xml", "io"),
+          "application", Set.of("lexer", "token", "xml", "io", "parser"),
           "cli", Set.of("application", "lexer", "token"));
 
   private static final Pattern PACKAGE_DECLARATION =
