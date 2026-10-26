@@ -37,8 +37,36 @@ final class ExpressionParser {
     return new GrammarNode(SyntaxTag.EXPRESSION, children);
   }
 
-  /** Parses an atomic term; compound terms are introduced by subsequent increments. */
+  /** Parses an atomic, parenthesized, unary or array-access term. */
   GrammarNode parseTerm() {
+    if (cursor.match(TokenType.SYMBOL, "(")) {
+      return new GrammarNode(
+          SyntaxTag.TERM,
+          List.of(
+              new TerminalNode(cursor.advance()),
+              parseExpression(),
+              new TerminalNode(cursor.consume(TokenType.SYMBOL, ")"))));
+    }
+
+    if (cursor.match(TokenType.SYMBOL, "-") || cursor.match(TokenType.SYMBOL, "~")) {
+      return new GrammarNode(
+          SyntaxTag.TERM, List.of(new TerminalNode(cursor.advance()), parseTerm()));
+    }
+
+    if (cursor.match(TokenType.IDENTIFIER)) {
+      Token identifier = cursor.advance();
+      if (cursor.match(TokenType.SYMBOL, "[")) {
+        return new GrammarNode(
+            SyntaxTag.TERM,
+            List.of(
+                new TerminalNode(identifier),
+                new TerminalNode(cursor.advance()),
+                parseExpression(),
+                new TerminalNode(cursor.consume(TokenType.SYMBOL, "]"))));
+      }
+      return new GrammarNode(SyntaxTag.TERM, List.of(new TerminalNode(identifier)));
+    }
+
     if (cursor.peek().filter(ExpressionParser::isAtomicTerm).isEmpty()) {
       throw new SyntaxException("term", cursor.peek(), cursor.position());
     }
