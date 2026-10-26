@@ -27,13 +27,17 @@ final class StatementParser {
     while (!cursor.isAtEnd() && !cursor.match(TokenType.SYMBOL, "}")) {
       if (cursor.match(TokenType.KEYWORD, "let")) {
         children.add(parseLetStatement());
+      } else if (cursor.match(TokenType.KEYWORD, "if")) {
+        children.add(parseIfStatement());
+      } else if (cursor.match(TokenType.KEYWORD, "while")) {
+        children.add(parseWhileStatement());
       } else if (cursor.match(TokenType.KEYWORD, "do")) {
         children.add(parseDoStatement());
       } else if (cursor.match(TokenType.KEYWORD, "return")) {
         children.add(parseReturnStatement());
       } else {
         throw new SyntaxException(
-            "statement (let, do or return)", cursor.peek(), cursor.position());
+            "statement (let, if, while, do or return)", cursor.peek(), cursor.position());
       }
     }
 
@@ -57,6 +61,43 @@ final class StatementParser {
     children.add(new TerminalNode(cursor.consume(TokenType.SYMBOL, ";")));
 
     return new GrammarNode(SyntaxTag.LET_STATEMENT, children);
+  }
+
+  /** Parses a conditional statement with an optional else block. */
+  GrammarNode parseIfStatement() {
+    List<ParseNode> children = new ArrayList<>();
+
+    children.add(new TerminalNode(cursor.consume(TokenType.KEYWORD, "if")));
+    children.add(new TerminalNode(cursor.consume(TokenType.SYMBOL, "(")));
+    children.add(expressions.parseExpression());
+    children.add(new TerminalNode(cursor.consume(TokenType.SYMBOL, ")")));
+    children.add(new TerminalNode(cursor.consume(TokenType.SYMBOL, "{")));
+    children.add(parseStatements());
+    children.add(new TerminalNode(cursor.consume(TokenType.SYMBOL, "}")));
+
+    if (cursor.match(TokenType.KEYWORD, "else")) {
+      children.add(new TerminalNode(cursor.advance()));
+      children.add(new TerminalNode(cursor.consume(TokenType.SYMBOL, "{")));
+      children.add(parseStatements());
+      children.add(new TerminalNode(cursor.consume(TokenType.SYMBOL, "}")));
+    }
+
+    return new GrammarNode(SyntaxTag.IF_STATEMENT, children);
+  }
+
+  /** Parses a while statement with a required braced body. */
+  GrammarNode parseWhileStatement() {
+    List<ParseNode> children = new ArrayList<>();
+
+    children.add(new TerminalNode(cursor.consume(TokenType.KEYWORD, "while")));
+    children.add(new TerminalNode(cursor.consume(TokenType.SYMBOL, "(")));
+    children.add(expressions.parseExpression());
+    children.add(new TerminalNode(cursor.consume(TokenType.SYMBOL, ")")));
+    children.add(new TerminalNode(cursor.consume(TokenType.SYMBOL, "{")));
+    children.add(parseStatements());
+    children.add(new TerminalNode(cursor.consume(TokenType.SYMBOL, "}")));
+
+    return new GrammarNode(SyntaxTag.WHILE_STATEMENT, children);
   }
 
   /** Parses a subroutine-call statement without adding a subroutine-call wrapper. */
