@@ -5,15 +5,16 @@ import java.nio.file.Path;
 import java.util.Objects;
 import java.util.Optional;
 
-/** Parses the documented lexical-analysis command line without accessing files. */
+/** Parses the documented JackCompiler command line without accessing files. */
 public final class CliArgumentParser {
 
   public static final String USAGE =
       "Usage: jackcompiler tokenize <file.jack|directory> [--output-dir <directory>]\n"
+          + "       jackcompiler parse <file.jack|directory> [--output-dir <directory>]\n"
           + "       jackcompiler --help";
 
   /**
-   * Accepts only the implemented tokenize operation and the standalone help option.
+   * Accepts tokenize, parse, and the standalone help option.
    *
    * @param args command-line arguments, excluding the executable name
    * @return validated, normalized arguments
@@ -32,11 +33,18 @@ public final class CliArgumentParser {
     if (args[0] == null) {
       throw invalid("Command cannot be null.");
     }
-    if (!"tokenize".equals(args[0])) {
-      throw invalid("Unknown command: " + args[0]);
-    }
+
+    CliArguments.Command command =
+        switch (args[0]) {
+          case "tokenize" -> CliArguments.Command.TOKENIZE;
+          case "parse" -> CliArguments.Command.PARSE;
+          default -> throw invalid("Unknown command: " + args[0]);
+        };
+
     if (args.length == 1 || args[1] == null || args[1].isBlank() || args[1].startsWith("--")) {
-      throw invalid("Tokenize requires an input path.");
+      throw invalid(
+          (command == CliArguments.Command.TOKENIZE ? "Tokenize" : "Parse")
+              + " requires an input path.");
     }
 
     Path input = parsePath(args[1], "input");
@@ -63,7 +71,7 @@ public final class CliArgumentParser {
       }
     }
 
-    return new CliArguments(CliArguments.Command.TOKENIZE, Optional.of(input), outputDirectory);
+    return new CliArguments(command, Optional.of(input), outputDirectory);
   }
 
   private static Path parsePath(String raw, String role) {

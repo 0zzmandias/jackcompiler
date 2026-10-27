@@ -1,8 +1,10 @@
 package jackcompiler.cli;
 
+import jackcompiler.application.ParseCommand;
 import jackcompiler.application.SourceProcessingException;
 import jackcompiler.application.TokenizeCommand;
 import jackcompiler.lexer.LexicalException;
+import jackcompiler.parser.SyntaxException;
 import java.io.IOException;
 import java.io.PrintStream;
 import java.nio.file.Path;
@@ -47,9 +49,12 @@ public final class JackCompiler {
     }
 
     try {
+      Path input = arguments.input().orElseThrow();
+
       List<Path> outputs =
-          new TokenizeCommand()
-              .execute(arguments.input().orElseThrow(), arguments.outputDirectory());
+          arguments.command() == CliArguments.Command.TOKENIZE
+              ? new TokenizeCommand().execute(input, arguments.outputDirectory())
+              : new ParseCommand().execute(input, arguments.outputDirectory());
 
       for (Path output : outputs) {
         out.println("Generated: " + output);
@@ -73,6 +78,13 @@ public final class JackCompiler {
           lexical.position().line(),
           lexical.position().column(),
           lexical.getMessage());
+    } else if (cause instanceof SyntaxException syntax) {
+      err.printf(
+          "Syntax error in %s at line %d, column %d: %s%n",
+          exception.sourceFile(),
+          syntax.position().line(),
+          syntax.position().column(),
+          syntax.getMessage());
     } else if (cause instanceof IOException) {
       err.printf("I/O error in %s: %s%n", exception.sourceFile(), cause.getMessage());
     } else {

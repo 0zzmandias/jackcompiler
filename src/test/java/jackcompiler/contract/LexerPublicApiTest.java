@@ -36,7 +36,7 @@ class LexerPublicApiTest {
           "xml", Set.of("token", "syntax"),
           "io", Set.of(),
           "application", Set.of("lexer", "token", "xml", "io", "parser"),
-          "cli", Set.of("application", "lexer", "token"));
+          "cli", Set.of("application", "lexer", "token", "parser"));
 
   private static final Pattern PACKAGE_DECLARATION =
       Pattern.compile("(?m)^\\s*package\\s+jackcompiler\\.([a-z]+)\\s*;");

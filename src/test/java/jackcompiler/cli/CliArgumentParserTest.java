@@ -109,7 +109,7 @@ class CliArgumentParserTest {
   }
 
   @ParameterizedTest
-  @ValueSource(strings = {"parse", "compile", "tokens", "Tokenize", "", "help"})
+  @ValueSource(strings = {"compile", "tokens", "Tokenize", "", "help"})
   void rejectsUnimplementedOrUnknownCommands(String command) {
     IllegalArgumentException error =
         assertThrows(
@@ -240,10 +240,186 @@ class CliArgumentParserTest {
   }
 
   @Test
-  void includesBothSupportedFormsInUsage() {
+  void includesAllSupportedFormsInUsage() {
     assertTrue(CliArgumentParser.USAGE.contains("tokenize"));
+    assertTrue(CliArgumentParser.USAGE.contains("parse"));
     assertTrue(CliArgumentParser.USAGE.contains("--help"));
     assertTrue(CliArgumentParser.USAGE.contains("--output-dir"));
-    assertFalse(CliArgumentParser.USAGE.contains("parse"));
+    assertFalse(CliArgumentParser.USAGE.contains("jackcompiler compile "));
+  }
+
+  @Test
+  void parsesParseWithSourceFile() {
+    CliArguments result = parser.parse(new String[] {"parse", "Main.jack"});
+
+    assertEquals(Command.PARSE, result.command());
+    assertEquals(Path.of("Main.jack").toAbsolutePath().normalize(), result.input().orElseThrow());
+    assertTrue(result.outputDirectory().isEmpty());
+  }
+
+  @Test
+  void parsesParseWithDirectory() {
+    CliArguments result = parser.parse(new String[] {"parse", "examples"});
+
+    assertEquals(Command.PARSE, result.command());
+    assertEquals(Path.of("examples").toAbsolutePath().normalize(), result.input().orElseThrow());
+    assertTrue(result.outputDirectory().isEmpty());
+  }
+
+  @Test
+  void parsesParseWithCustomOutputDirectory() {
+    CliArguments result =
+        parser.parse(new String[] {"parse", "Main.jack", "--output-dir", "results"});
+
+    assertEquals(Command.PARSE, result.command());
+    assertEquals(
+        Path.of("results").toAbsolutePath().normalize(), result.outputDirectory().orElseThrow());
+  }
+
+  @Test
+  void normalizesParseInputAndOutputPaths() {
+    CliArguments result =
+        parser.parse(new String[] {"parse", "a/../Main.jack", "--output-dir", "a/../out"});
+
+    assertEquals(Path.of("Main.jack").toAbsolutePath().normalize(), result.input().orElseThrow());
+    assertEquals(
+        Path.of("out").toAbsolutePath().normalize(), result.outputDirectory().orElseThrow());
+  }
+
+  @Test
+  void preservesSpacesAndUnicodeForParse() {
+    CliArguments result =
+        parser.parse(
+            new String[] {"parse", "Meus Arquivos/Olá.jack", "--output-dir", "Pasta de saída"});
+
+    assertEquals(Command.PARSE, result.command());
+    assertEquals(
+        Path.of("Meus Arquivos/Olá.jack").toAbsolutePath().normalize(),
+        result.input().orElseThrow());
+    assertEquals(
+        Path.of("Pasta de saída").toAbsolutePath().normalize(),
+        result.outputDirectory().orElseThrow());
+  }
+
+  @Test
+  void doesNotMutateParseArgumentArray() {
+    String[] input = {"parse", "Main.jack", "--output-dir", "out"};
+    String[] before = input.clone();
+
+    parser.parse(input);
+
+    assertArrayEquals(before, input);
+  }
+
+  @Test
+  void rejectsParseWithoutInput() {
+    IllegalArgumentException error =
+        assertThrows(IllegalArgumentException.class, () -> parser.parse(new String[] {"parse"}));
+
+    assertTrue(error.getMessage().contains("Parse requires an input path"));
+    assertTrue(error.getMessage().contains("Usage:"));
+  }
+
+  @Test
+  void rejectsNullParseInput() {
+    assertThrows(IllegalArgumentException.class, () -> parser.parse(new String[] {"parse", null}));
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = {"", " ", "\t", "--output-dir", "--help"})
+  void rejectsMissingOrOptionLikeParseInput(String input) {
+    assertThrows(IllegalArgumentException.class, () -> parser.parse(new String[] {"parse", input}));
+  }
+
+  @Test
+  void rejectsAdditionalParsePositionalArgument() {
+    IllegalArgumentException error =
+        assertThrows(
+            IllegalArgumentException.class,
+            () -> parser.parse(new String[] {"parse", "Main.jack", "extra"}));
+
+    assertTrue(error.getMessage().contains("Unexpected argument"));
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = {"--unknown", "--help", "-v"})
+  void rejectsUnknownParseOptions(String option) {
+    IllegalArgumentException error =
+        assertThrows(
+            IllegalArgumentException.class,
+            () -> parser.parse(new String[] {"parse", "Main.jack", option}));
+
+    assertTrue(error.getMessage().contains("Unknown option"));
+  }
+
+  @Test
+  void rejectsRepeatedParseOutputDirectoryOption() {
+    IllegalArgumentException error =
+        assertThrows(
+            IllegalArgumentException.class,
+            () ->
+                parser.parse(
+                    new String[] {
+                      "parse", "Main.jack", "--output-dir", "out", "--output-dir", "elsewhere"
+                    }));
+
+    assertTrue(error.getMessage().contains("Duplicate"));
+  }
+
+  @Test
+  void rejectsParseOutputOptionWithoutDirectory() {
+    IllegalArgumentException error =
+        assertThrows(
+            IllegalArgumentException.class,
+            () -> parser.parse(new String[] {"parse", "Main.jack", "--output-dir"}));
+
+    assertTrue(error.getMessage().contains("Missing directory"));
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = {"", " ", "\t", "--help", "--output-dir"})
+  void rejectsBlankOrOptionLikeParseOutputDirectory(String output) {
+    assertThrows(
+        IllegalArgumentException.class,
+        () -> parser.parse(new String[] {"parse", "Main.jack", "--output-dir", output}));
+  }
+
+  @Test
+  void rejectsNullParseOutputDirectory() {
+    assertThrows(
+        IllegalArgumentException.class,
+        () -> parser.parse(new String[] {"parse", "Main.jack", "--output-dir", null}));
+  }
+
+  @Test
+  void rejectsInvalidParseInputPath() {
+    IllegalArgumentException error =
+        assertThrows(
+            IllegalArgumentException.class,
+            () -> parser.parse(new String[] {"parse", "bad\0path"}));
+
+    assertInstanceOf(InvalidPathException.class, error.getCause());
+    assertTrue(error.getMessage().contains("Invalid input path"));
+  }
+
+  @Test
+  void rejectsInvalidParseOutputDirectoryPath() {
+    IllegalArgumentException error =
+        assertThrows(
+            IllegalArgumentException.class,
+            () -> parser.parse(new String[] {"parse", "Main.jack", "--output-dir", "bad\0path"}));
+
+    assertInstanceOf(InvalidPathException.class, error.getCause());
+    assertTrue(error.getMessage().contains("Invalid output directory path"));
+  }
+
+  @Test
+  void rejectsNullTrailingParseArgument() {
+    IllegalArgumentException error =
+        assertThrows(
+            IllegalArgumentException.class,
+            () -> parser.parse(new String[] {"parse", "Main.jack", null}));
+
+    assertTrue(error.getMessage().contains("Unexpected argument"));
   }
 }

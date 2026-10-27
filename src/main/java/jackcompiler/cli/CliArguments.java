@@ -7,9 +7,10 @@ import java.util.Optional;
 /** Immutable, validated arguments for an implemented JackCompiler operation. */
 public record CliArguments(Command command, Optional<Path> input, Optional<Path> outputDirectory) {
 
-  /** Operations supported during the lexical-analysis phase. */
+  /** Operations supported by the JackCompiler command-line interface. */
   public enum Command {
     TOKENIZE,
+    PARSE,
     HELP
   }
 
@@ -24,7 +25,8 @@ public record CliArguments(Command command, Optional<Path> input, Optional<Path>
         throw new IllegalArgumentException("Help does not accept source or output paths.");
       }
     } else if (input.isEmpty()) {
-      throw new IllegalArgumentException("Tokenize requires an input path.");
+      String name = command == Command.TOKENIZE ? "Tokenize" : "Parse";
+      throw new IllegalArgumentException(name + " requires an input path.");
     }
 
     input = input.map(path -> path.toAbsolutePath().normalize());

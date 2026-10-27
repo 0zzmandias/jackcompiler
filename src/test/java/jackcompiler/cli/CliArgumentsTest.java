@@ -108,4 +108,63 @@ class CliArgumentsTest {
         NullPointerException.class,
         () -> new CliArguments(Command.TOKENIZE, Optional.of(Path.of("Main.jack")), null));
   }
+
+  @Test
+  void representsParseWithoutCustomOutputDirectory() {
+    var arguments =
+        new CliArguments(Command.PARSE, Optional.of(Path.of("Main.jack")), Optional.empty());
+
+    assertEquals(Command.PARSE, arguments.command());
+    assertEquals(
+        Path.of("Main.jack").toAbsolutePath().normalize(), arguments.input().orElseThrow());
+    assertTrue(arguments.outputDirectory().isEmpty());
+  }
+
+  @Test
+  void normalizesParseInputAndOutputPaths() {
+    var arguments =
+        new CliArguments(
+            Command.PARSE,
+            Optional.of(Path.of("examples", "..", "Main.jack")),
+            Optional.of(Path.of("out", "temp", "..")));
+
+    assertEquals(
+        Path.of("Main.jack").toAbsolutePath().normalize(), arguments.input().orElseThrow());
+    assertEquals(
+        Path.of("out").toAbsolutePath().normalize(), arguments.outputDirectory().orElseThrow());
+  }
+
+  @Test
+  void rejectsMissingInputForParse() {
+    IllegalArgumentException error =
+        assertThrows(
+            IllegalArgumentException.class,
+            () -> new CliArguments(Command.PARSE, Optional.empty(), Optional.empty()));
+
+    assertTrue(error.getMessage().contains("Parse requires an input path"));
+  }
+
+  @Test
+  void rejectsNullInputOptionalForParse() {
+    assertThrows(
+        NullPointerException.class, () -> new CliArguments(Command.PARSE, null, Optional.empty()));
+  }
+
+  @Test
+  void rejectsNullOutputDirectoryOptionalForParse() {
+    assertThrows(
+        NullPointerException.class,
+        () -> new CliArguments(Command.PARSE, Optional.of(Path.of("Main.jack")), null));
+  }
+
+  @Test
+  void keepsTokenizeAndParseAsDifferentCommandValues() {
+    var tokenize =
+        new CliArguments(Command.TOKENIZE, Optional.of(Path.of("Main.jack")), Optional.empty());
+    var parse =
+        new CliArguments(Command.PARSE, Optional.of(Path.of("Main.jack")), Optional.empty());
+
+    assertFalse(tokenize.equals(parse));
+    assertEquals(tokenize.input(), parse.input());
+  }
 }

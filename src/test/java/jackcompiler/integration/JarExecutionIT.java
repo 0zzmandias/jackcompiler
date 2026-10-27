@@ -48,8 +48,8 @@ class JarExecutionIT {
     assertEquals(0, result.exitCode());
     assertEquals("", result.stderr());
     assertTrue(result.stdout().contains("tokenize"));
+    assertTrue(result.stdout().contains("parse"));
     assertTrue(result.stdout().contains("--output-dir"));
-    assertFalse(result.stdout().contains("parse"));
   }
 
   @Test
@@ -109,15 +109,6 @@ class JarExecutionIT {
             + System.lineSeparator(),
         result.stdout());
     assertFalse(Files.exists(destination.resolve("NestedT.xml")));
-  }
-
-  @Test
-  void packagedJarRejectsUnavailableParseCommand() throws Exception {
-    Execution result = execute(tempDir, "parse", "Main.jack");
-
-    assertEquals(2, result.exitCode());
-    assertEquals("", result.stdout());
-    assertTrue(result.stderr().contains("Unknown command: parse"));
   }
 
   @Test
@@ -188,6 +179,151 @@ class JarExecutionIT {
     assertTrue(Files.isRegularFile(destination.resolve("AT.xml")));
     assertFalse(Files.exists(destination.resolve("BT.xml")));
     assertFalse(Files.exists(destination.resolve("CT.xml")));
+  }
+
+  @Test
+  void packagedJarParsesSourceIntoCustomDirectory() throws Exception {
+    Path source = Files.writeString(tempDir.resolve("Main.jack"), "class Main {}");
+    byte[] original = Files.readAllBytes(source);
+    Path outputDirectory = tempDir.resolve("parser-out");
+
+    Execution result =
+        execute(tempDir, "parse", source.toString(), "--output-dir", outputDirectory.toString());
+
+    Path output = outputDirectory.resolve("MainP.xml");
+    assertEquals(0, result.exitCode());
+    assertEquals("", result.stderr());
+    assertEquals("Generated: " + output + System.lineSeparator(), result.stdout());
+    assertEquals(
+        "<class>\n"
+            + "  <keyword> class </keyword>\n"
+            + "  <identifier> Main </identifier>\n"
+            + "  <symbol> { </symbol>\n"
+            + "  <symbol> } </symbol>\n"
+            + "</class>\n",
+        Files.readString(output, StandardCharsets.UTF_8));
+    assertArrayEquals(original, Files.readAllBytes(source));
+  }
+
+  @Test
+  void packagedJarUsesParserDefaultDirectoryRelativeToWorkingDirectory() throws Exception {
+    Path workingDirectory = Files.createDirectory(tempDir.resolve("parser-working"));
+    Files.writeString(workingDirectory.resolve("Main.jack"), "class Main {}\n");
+
+    Execution result = execute(workingDirectory, "parse", "Main.jack");
+
+    Path expected = workingDirectory.resolve("target/generated-parser/MainP.xml");
+    assertEquals(0, result.exitCode());
+    assertEquals("", result.stderr());
+    assertEquals("Generated: " + expected + System.lineSeparator(), result.stdout());
+    assertTrue(Files.readString(expected).startsWith("<class>\n"));
+    assertFalse(Files.exists(workingDirectory.resolve("target/generated-tokens/MainT.xml")));
+  }
+
+  @Test
+  void packagedJarSupportsBothCommandsForSameSource() throws Exception {
+    Path source = Files.writeString(tempDir.resolve("Main.jack"), "class Main {}");
+    Path destination = tempDir.resolve("out");
+
+    Execution tokens =
+        execute(tempDir, "tokenize", source.toString(), "--output-dir", destination.toString());
+    Execution syntax =
+        execute(tempDir, "parse", source.toString(), "--output-dir", destination.toString());
+
+    assertEquals(0, tokens.exitCode());
+    assertEquals(0, syntax.exitCode());
+    assertEquals("", tokens.stderr());
+    assertEquals("", syntax.stderr());
+    assertTrue(Files.readString(destination.resolve("MainT.xml")).startsWith("<tokens>\n"));
+    assertTrue(Files.readString(destination.resolve("MainP.xml")).startsWith("<class>\n"));
+  }
+
+  @Test
+  void packagedJarParsesDirectoryInDeterministicOrder() throws Exception {
+    Path sources = Files.createDirectory(tempDir.resolve("parser-sources"));
+    Files.writeString(sources.resolve("Zebra.jack"), "class Zebra {}");
+    Files.writeString(sources.resolve("Alpha.jack"), "class Alpha {}");
+    Path nested = Files.createDirectory(sources.resolve("nested"));
+    Files.writeString(nested.resolve("Hidden.jack"), "class Hidden {}");
+    Path destination = tempDir.resolve("out");
+
+    Execution result =
+        execute(tempDir, "parse", sources.toString(), "--output-dir", destination.toString());
+
+    assertEquals(0, result.exitCode());
+    assertEquals("", result.stderr());
+    assertEquals(
+        "Generated: "
+            + destination.resolve("AlphaP.xml")
+            + System.lineSeparator()
+            + "Generated: "
+            + destination.resolve("ZebraP.xml")
+            + System.lineSeparator(),
+        result.stdout());
+    assertTrue(Files.isRegularFile(destination.resolve("AlphaP.xml")));
+    assertTrue(Files.isRegularFile(destination.resolve("ZebraP.xml")));
+    assertFalse(Files.exists(destination.resolve("HiddenP.xml")));
+  }
+
+  @Test
+  void packagedJarReportsSyntaxErrorWithOriginalPosition() throws Exception {
+    Path source =
+        Files.writeString(
+            tempDir.resolve("Broken.jack"),
+            "class Main {\n" + "  function void run() {\n" + "    let x = ;\n" + "  }\n" + "}");
+    Path destination = tempDir.resolve("out");
+
+    Execution result =
+        execute(tempDir, "parse", source.toString(), "--output-dir", destination.toString());
+
+    assertEquals(1, result.exitCode());
+    assertEquals("", result.stdout());
+    assertTrue(result.stderr().contains("Syntax error"));
+    assertTrue(result.stderr().contains(source.toString()));
+    assertTrue(result.stderr().contains("line 3, column 13"));
+    assertTrue(result.stderr().contains("Expected term"));
+    assertFalse(Files.exists(destination.resolve("BrokenP.xml")));
+  }
+
+  @Test
+  void packagedJarReportsLexicalErrorDuringParsing() throws Exception {
+    Path source = Files.writeString(tempDir.resolve("Invalid.jack"), "class Main {}\n@");
+    Path destination = tempDir.resolve("out");
+
+    Execution result =
+        execute(tempDir, "parse", source.toString(), "--output-dir", destination.toString());
+
+    assertEquals(1, result.exitCode());
+    assertEquals("", result.stdout());
+    assertTrue(result.stderr().contains("Lexical error"));
+    assertTrue(result.stderr().contains("line 2, column 1"));
+    assertFalse(Files.exists(destination.resolve("InvalidP.xml")));
+  }
+
+  @Test
+  void packagedJarRejectsParseOutputCollisionWithoutOverwriting() throws Exception {
+    Path source = Files.writeString(tempDir.resolve("Main.jack"), "class Main {}");
+    Path outputDirectory = Files.createDirectory(tempDir.resolve("out"));
+    Path output = Files.writeString(outputDirectory.resolve("MainP.xml"), "original");
+
+    Execution result =
+        execute(tempDir, "parse", source.toString(), "--output-dir", outputDirectory.toString());
+
+    assertEquals(1, result.exitCode());
+    assertEquals("", result.stdout());
+    assertTrue(result.stderr().contains("I/O error"));
+    assertEquals("original", Files.readString(output));
+    assertEquals("class Main {}", Files.readString(source));
+  }
+
+  @Test
+  void packagedJarRejectsInvalidParseArguments() throws Exception {
+    Execution result = execute(tempDir, "parse");
+
+    assertEquals(2, result.exitCode());
+    assertEquals("", result.stdout());
+    assertTrue(result.stderr().contains("Parse requires an input path"));
+    assertTrue(result.stderr().contains("Usage:"));
   }
 
   private Execution execute(Path workingDirectory, String... arguments)
