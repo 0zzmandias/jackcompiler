@@ -30,7 +30,7 @@ final class ExpressionParser {
     children.add(parseTerm());
 
     while (cursor.peek().filter(ExpressionParser::isBinaryOperator).isPresent()) {
-      children.add(new TerminalNode(cursor.advance()));
+      children.add(parseOp());
       children.add(parseTerm());
     }
 
@@ -49,8 +49,7 @@ final class ExpressionParser {
     }
 
     if (cursor.match(TokenType.SYMBOL, "-") || cursor.match(TokenType.SYMBOL, "~")) {
-      return new GrammarNode(
-          SyntaxTag.TERM, List.of(new TerminalNode(cursor.advance()), parseTerm()));
+      return new GrammarNode(SyntaxTag.TERM, List.of(parseUnaryOp(), parseTerm()));
     }
 
     if (cursor.match(TokenType.IDENTIFIER)) {
@@ -58,34 +57,40 @@ final class ExpressionParser {
         return new GrammarNode(SyntaxTag.TERM, parseSubroutineCall());
       }
 
-      Token identifier = cursor.advance();
+      TerminalNode identifier = parseVarName();
       if (cursor.match(TokenType.SYMBOL, "[")) {
         return new GrammarNode(
             SyntaxTag.TERM,
             List.of(
-                new TerminalNode(identifier),
+                identifier,
                 new TerminalNode(cursor.advance()),
                 parseExpression(),
                 new TerminalNode(cursor.consume(TokenType.SYMBOL, "]"))));
       }
-      return new GrammarNode(SyntaxTag.TERM, List.of(new TerminalNode(identifier)));
+      return new GrammarNode(SyntaxTag.TERM, List.of(identifier));
     }
 
     if (cursor.peek().filter(ExpressionParser::isAtomicTerm).isEmpty()) {
       throw new SyntaxException("term", cursor.peek(), cursor.position());
     }
 
-    return new GrammarNode(SyntaxTag.TERM, List.of(new TerminalNode(cursor.advance())));
+    TerminalNode atomic =
+        cursor.match(TokenType.KEYWORD)
+            ? parseKeywordConstant()
+            : new TerminalNode(cursor.advance());
+    return new GrammarNode(SyntaxTag.TERM, List.of(atomic));
   }
 
   /** Parses a subroutine call without introducing a nonstandard grammar wrapper. */
   List<ParseNode> parseSubroutineCall() {
     List<ParseNode> children = new ArrayList<>();
-    children.add(new TerminalNode(cursor.consume(TokenType.IDENTIFIER)));
+
+    boolean qualified = cursor.peek(1).filter(ExpressionParser::isDot).isPresent();
+    children.add(qualified ? parseCallQualifier() : parseSubroutineName());
 
     if (cursor.match(TokenType.SYMBOL, ".")) {
       children.add(new TerminalNode(cursor.advance()));
-      children.add(new TerminalNode(cursor.consume(TokenType.IDENTIFIER)));
+      children.add(parseSubroutineName());
     }
 
     children.add(new TerminalNode(cursor.consume(TokenType.SYMBOL, "(")));
@@ -107,6 +112,45 @@ final class ExpressionParser {
     return new GrammarNode(SyntaxTag.EXPRESSION_LIST, children);
   }
 
+  /** Consumes the op production, retaining the original symbol token. */
+  private TerminalNode parseOp() {
+    if (cursor.peek().filter(ExpressionParser::isBinaryOperator).isEmpty()) {
+      throw new SyntaxException("binary operator", cursor.peek(), cursor.position());
+    }
+    return new TerminalNode(cursor.advance());
+  }
+
+  /** Consumes the unaryOp production, retaining the original symbol token. */
+  private TerminalNode parseUnaryOp() {
+    if (!cursor.match(TokenType.SYMBOL, "-") && !cursor.match(TokenType.SYMBOL, "~")) {
+      throw new SyntaxException("unary operator", cursor.peek(), cursor.position());
+    }
+    return new TerminalNode(cursor.advance());
+  }
+
+  /** Consumes the keywordConstant production, retaining the original keyword token. */
+  private TerminalNode parseKeywordConstant() {
+    if (cursor.peek().filter(ExpressionParser::isKeywordConstant).isEmpty()) {
+      throw new SyntaxException("keyword constant", cursor.peek(), cursor.position());
+    }
+    return new TerminalNode(cursor.advance());
+  }
+
+  /** Consumes varName in a term or array access. */
+  private TerminalNode parseVarName() {
+    return new TerminalNode(cursor.consume(TokenType.IDENTIFIER));
+  }
+
+  /** Consumes subroutineName, either directly or after a qualifier. */
+  private TerminalNode parseSubroutineName() {
+    return new TerminalNode(cursor.consume(TokenType.IDENTIFIER));
+  }
+
+  /** Consumes the syntactically ambiguous className/varName preceding a qualified call. */
+  private TerminalNode parseCallQualifier() {
+    return new TerminalNode(cursor.consume(TokenType.IDENTIFIER));
+  }
+
   private boolean isSubroutineCall() {
     return cursor
         .peek(1)
@@ -117,12 +161,20 @@ final class ExpressionParser {
         .isPresent();
   }
 
+  private static boolean isDot(Token token) {
+    return token.type() == TokenType.SYMBOL && token.value().equals(".");
+  }
+
   private static boolean isAtomicTerm(Token token) {
     return switch (token.type()) {
       case INTEGER_CONSTANT, STRING_CONSTANT, IDENTIFIER -> true;
-      case KEYWORD -> KEYWORD_CONSTANTS.contains(token.value());
+      case KEYWORD -> isKeywordConstant(token);
       case SYMBOL -> false;
     };
+  }
+
+  private static boolean isKeywordConstant(Token token) {
+    return token.type() == TokenType.KEYWORD && KEYWORD_CONSTANTS.contains(token.value());
   }
 
   private static boolean isBinaryOperator(Token token) {

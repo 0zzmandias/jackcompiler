@@ -24,7 +24,7 @@ final class ClassStructureParser {
   GrammarNode parseClass() {
     List<ParseNode> children = new ArrayList<>();
     children.add(new TerminalNode(cursor.consume(TokenType.KEYWORD, "class")));
-    children.add(new TerminalNode(cursor.consume(TokenType.IDENTIFIER)));
+    children.add(parseClassName());
     children.add(new TerminalNode(cursor.consume(TokenType.SYMBOL, "{")));
 
     while (isClassVariableStart()) {
@@ -50,11 +50,11 @@ final class ClassStructureParser {
 
     children.add(new TerminalNode(cursor.advance()));
     children.add(parseType());
-    children.add(new TerminalNode(cursor.consume(TokenType.IDENTIFIER)));
+    children.add(parseVarName());
 
     while (cursor.match(TokenType.SYMBOL, ",")) {
       children.add(new TerminalNode(cursor.advance()));
-      children.add(new TerminalNode(cursor.consume(TokenType.IDENTIFIER)));
+      children.add(parseVarName());
     }
 
     children.add(new TerminalNode(cursor.consume(TokenType.SYMBOL, ";")));
@@ -74,7 +74,7 @@ final class ClassStructureParser {
 
     children.add(new TerminalNode(cursor.advance()));
     children.add(parseReturnType());
-    children.add(new TerminalNode(cursor.consume(TokenType.IDENTIFIER)));
+    children.add(parseSubroutineName());
     children.add(new TerminalNode(cursor.consume(TokenType.SYMBOL, "(")));
     children.add(parseParameterList());
     children.add(new TerminalNode(cursor.consume(TokenType.SYMBOL, ")")));
@@ -89,12 +89,12 @@ final class ClassStructureParser {
 
     if (!cursor.match(TokenType.SYMBOL, ")")) {
       children.add(parseType());
-      children.add(new TerminalNode(cursor.consume(TokenType.IDENTIFIER)));
+      children.add(parseVarName());
 
       while (cursor.match(TokenType.SYMBOL, ",")) {
         children.add(new TerminalNode(cursor.advance()));
         children.add(parseType());
-        children.add(new TerminalNode(cursor.consume(TokenType.IDENTIFIER)));
+        children.add(parseVarName());
       }
     }
 
@@ -121,11 +121,11 @@ final class ClassStructureParser {
     List<ParseNode> children = new ArrayList<>();
     children.add(new TerminalNode(cursor.consume(TokenType.KEYWORD, "var")));
     children.add(parseType());
-    children.add(new TerminalNode(cursor.consume(TokenType.IDENTIFIER)));
+    children.add(parseVarName());
 
     while (cursor.match(TokenType.SYMBOL, ",")) {
       children.add(new TerminalNode(cursor.advance()));
-      children.add(new TerminalNode(cursor.consume(TokenType.IDENTIFIER)));
+      children.add(parseVarName());
     }
 
     children.add(new TerminalNode(cursor.consume(TokenType.SYMBOL, ";")));
@@ -134,8 +134,10 @@ final class ClassStructureParser {
 
   /** Recognizes a primitive Jack type or a class name without creating a wrapper node. */
   private TerminalNode parseType() {
-    if (cursor.match(TokenType.IDENTIFIER)
-        || cursor.match(TokenType.KEYWORD, "int")
+    if (cursor.match(TokenType.IDENTIFIER)) {
+      return parseClassName();
+    }
+    if (cursor.match(TokenType.KEYWORD, "int")
         || cursor.match(TokenType.KEYWORD, "char")
         || cursor.match(TokenType.KEYWORD, "boolean")) {
       return new TerminalNode(cursor.advance());
@@ -151,6 +153,21 @@ final class ClassStructureParser {
     }
 
     return parseType();
+  }
+
+  /** Consumes className in declarations and class types. */
+  private TerminalNode parseClassName() {
+    return new TerminalNode(cursor.consume(TokenType.IDENTIFIER));
+  }
+
+  /** Consumes subroutineName in a constructor, function or method declaration. */
+  private TerminalNode parseSubroutineName() {
+    return new TerminalNode(cursor.consume(TokenType.IDENTIFIER));
+  }
+
+  /** Consumes varName in a declaration or parameter list. */
+  private TerminalNode parseVarName() {
+    return new TerminalNode(cursor.consume(TokenType.IDENTIFIER));
   }
 
   private boolean isClassVariableStart() {

@@ -25,30 +25,38 @@ final class StatementParser {
     List<ParseNode> children = new ArrayList<>();
 
     while (!cursor.isAtEnd() && !cursor.match(TokenType.SYMBOL, "}")) {
-      if (cursor.match(TokenType.KEYWORD, "let")) {
-        children.add(parseLetStatement());
-      } else if (cursor.match(TokenType.KEYWORD, "if")) {
-        children.add(parseIfStatement());
-      } else if (cursor.match(TokenType.KEYWORD, "while")) {
-        children.add(parseWhileStatement());
-      } else if (cursor.match(TokenType.KEYWORD, "do")) {
-        children.add(parseDoStatement());
-      } else if (cursor.match(TokenType.KEYWORD, "return")) {
-        children.add(parseReturnStatement());
-      } else {
-        throw new SyntaxException(
-            "statement (let, if, while, do or return)", cursor.peek(), cursor.position());
-      }
+      children.add(parseStatement());
     }
 
     return new GrammarNode(SyntaxTag.STATEMENTS, children);
+  }
+
+  /** Selects the statement production without introducing an extra grammar node. */
+  private GrammarNode parseStatement() {
+    if (cursor.match(TokenType.KEYWORD, "let")) {
+      return parseLetStatement();
+    }
+    if (cursor.match(TokenType.KEYWORD, "if")) {
+      return parseIfStatement();
+    }
+    if (cursor.match(TokenType.KEYWORD, "while")) {
+      return parseWhileStatement();
+    }
+    if (cursor.match(TokenType.KEYWORD, "do")) {
+      return parseDoStatement();
+    }
+    if (cursor.match(TokenType.KEYWORD, "return")) {
+      return parseReturnStatement();
+    }
+    throw new SyntaxException(
+        "statement (let, if, while, do or return)", cursor.peek(), cursor.position());
   }
 
   /** Parses a variable or array-element assignment. */
   GrammarNode parseLetStatement() {
     List<ParseNode> children = new ArrayList<>();
     children.add(new TerminalNode(cursor.consume(TokenType.KEYWORD, "let")));
-    children.add(new TerminalNode(cursor.consume(TokenType.IDENTIFIER)));
+    children.add(parseVarName());
 
     if (cursor.match(TokenType.SYMBOL, "[")) {
       children.add(new TerminalNode(cursor.advance()));
@@ -121,5 +129,10 @@ final class StatementParser {
 
     children.add(new TerminalNode(cursor.consume(TokenType.SYMBOL, ";")));
     return new GrammarNode(SyntaxTag.RETURN_STATEMENT, children);
+  }
+
+  /** Consumes varName in an assignment, retaining the original identifier token. */
+  private TerminalNode parseVarName() {
+    return new TerminalNode(cursor.consume(TokenType.IDENTIFIER));
   }
 }
