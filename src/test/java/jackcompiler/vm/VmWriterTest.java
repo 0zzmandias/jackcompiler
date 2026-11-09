@@ -210,4 +210,192 @@ class VmWriterTest {
     assertEquals("push constant 1\n", snapshot);
     assertEquals("push constant 1\nneg\n", writer.toVm());
   }
+
+  @Test
+  void writesLabelGotoAndConditionalGoto() {
+    VmWriter writer = new VmWriter();
+
+    writer.writeLabel("LOOP_START");
+    writer.writeGoto("LOOP_END");
+    writer.writeIf("LOOP_START");
+
+    assertEquals("label LOOP_START\ngoto LOOP_END\nif-goto LOOP_START\n", writer.toVm());
+  }
+
+  @Test
+  void writesFunctionCallAndReturn() {
+    VmWriter writer = new VmWriter();
+
+    writer.writeFunction("Main.main", 3);
+    writer.writeCall("Output.printInt", 1);
+    writer.writeReturn();
+
+    assertEquals("function Main.main 3\ncall Output.printInt 1\nreturn\n", writer.toVm());
+  }
+
+  @Test
+  void preservesOrderAcrossAllCommandFamilies() {
+    VmWriter writer = new VmWriter();
+
+    writer.writeFunction("Main.main", 1);
+    writer.writePush(VmSegment.CONSTANT, 2);
+    writer.writePop(VmSegment.LOCAL, 0);
+    writer.writeLabel("LOOP");
+    writer.writePush(VmSegment.LOCAL, 0);
+    writer.writeArithmetic(VmArithmetic.NEG);
+    writer.writeIf("END");
+    writer.writeGoto("LOOP");
+    writer.writeLabel("END");
+    writer.writeCall("Output.printInt", 1);
+    writer.writeReturn();
+
+    assertEquals(
+        "function Main.main 1\n"
+            + "push constant 2\n"
+            + "pop local 0\n"
+            + "label LOOP\n"
+            + "push local 0\n"
+            + "neg\n"
+            + "if-goto END\n"
+            + "goto LOOP\n"
+            + "label END\n"
+            + "call Output.printInt 1\n"
+            + "return\n",
+        writer.toVm());
+  }
+
+  @Test
+  void acceptsVMIdentifierSymbolsAndDigitsAfterFirstCharacter() {
+    VmWriter writer = new VmWriter();
+
+    writer.writeLabel("_LOOP.2$inner:next");
+    writer.writeGoto("$DONE");
+    writer.writeIf(":EXIT");
+    writer.writeFunction("Main.main_1", 0);
+    writer.writeCall("Screen.draw$helper:2", 1);
+
+    assertEquals(
+        "label _LOOP.2$inner:next\n"
+            + "goto $DONE\n"
+            + "if-goto :EXIT\n"
+            + "function Main.main_1 0\n"
+            + "call Screen.draw$helper:2 1\n",
+        writer.toVm());
+  }
+
+  @Test
+  void acceptsUnqualifiedFunctionNames() {
+    VmWriter writer = new VmWriter();
+
+    writer.writeFunction("start", 0);
+    writer.writeCall("helper", 0);
+
+    assertEquals("function start 0\ncall helper 0\n", writer.toVm());
+  }
+
+  @Test
+  void acceptsZeroCountsAndRepeatedReturns() {
+    VmWriter writer = new VmWriter();
+
+    writer.writeFunction("Main.empty", 0);
+    writer.writeCall("Main.empty", 0);
+    writer.writeReturn();
+    writer.writeReturn();
+
+    assertEquals("function Main.empty 0\ncall Main.empty 0\nreturn\nreturn\n", writer.toVm());
+  }
+
+  @Test
+  void rejectsNegativeLocalVariableCountsWithoutChangingOutput() {
+    VmWriter writer = new VmWriter();
+    writer.writeLabel("OK");
+
+    assertThrows(IllegalArgumentException.class, () -> writer.writeFunction("Main.main", -1));
+    assertThrows(
+        IllegalArgumentException.class, () -> writer.writeFunction("Main.main", Integer.MIN_VALUE));
+
+    assertEquals("label OK\n", writer.toVm());
+  }
+
+  @Test
+  void rejectsNegativeArgumentCountsWithoutChangingOutput() {
+    VmWriter writer = new VmWriter();
+    writer.writeLabel("OK");
+
+    assertThrows(IllegalArgumentException.class, () -> writer.writeCall("Main.main", -1));
+    assertThrows(
+        IllegalArgumentException.class, () -> writer.writeCall("Main.main", Integer.MIN_VALUE));
+
+    assertEquals("label OK\n", writer.toVm());
+  }
+
+  @Test
+  void rejectsNullLabelNamesWithoutChangingOutput() {
+    VmWriter writer = new VmWriter();
+    writer.writeReturn();
+
+    assertThrows(NullPointerException.class, () -> writer.writeLabel(null));
+    assertThrows(NullPointerException.class, () -> writer.writeGoto(null));
+    assertThrows(NullPointerException.class, () -> writer.writeIf(null));
+
+    assertEquals("return\n", writer.toVm());
+  }
+
+  @Test
+  void rejectsNullFunctionAndCallNamesWithoutChangingOutput() {
+    VmWriter writer = new VmWriter();
+    writer.writeReturn();
+
+    assertThrows(NullPointerException.class, () -> writer.writeFunction(null, 0));
+    assertThrows(NullPointerException.class, () -> writer.writeCall(null, 0));
+
+    assertEquals("return\n", writer.toVm());
+  }
+
+  @Test
+  void rejectsBlankNamesWithoutChangingOutput() {
+    VmWriter writer = new VmWriter();
+    writer.writeReturn();
+
+    for (String invalid : new String[] {"", " ", "\t", "  \t  "}) {
+      assertThrows(IllegalArgumentException.class, () -> writer.writeLabel(invalid));
+      assertThrows(IllegalArgumentException.class, () -> writer.writeGoto(invalid));
+      assertThrows(IllegalArgumentException.class, () -> writer.writeIf(invalid));
+      assertThrows(IllegalArgumentException.class, () -> writer.writeFunction(invalid, 0));
+      assertThrows(IllegalArgumentException.class, () -> writer.writeCall(invalid, 0));
+    }
+
+    assertEquals("return\n", writer.toVm());
+  }
+
+  @Test
+  void rejectsIdentifiersStartingWithDigitsWithoutChangingOutput() {
+    VmWriter writer = new VmWriter();
+    writer.writeReturn();
+
+    assertThrows(IllegalArgumentException.class, () -> writer.writeLabel("1LOOP"));
+    assertThrows(IllegalArgumentException.class, () -> writer.writeGoto("2LOOP"));
+    assertThrows(IllegalArgumentException.class, () -> writer.writeIf("3LOOP"));
+    assertThrows(IllegalArgumentException.class, () -> writer.writeFunction("4Main", 0));
+    assertThrows(IllegalArgumentException.class, () -> writer.writeCall("5Main", 0));
+
+    assertEquals("return\n", writer.toVm());
+  }
+
+  @Test
+  void rejectsInvalidPunctuationWhitespaceAndLineBreaksWithoutChangingOutput() {
+    VmWriter writer = new VmWriter();
+    writer.writeReturn();
+
+    for (String invalid :
+        new String[] {"has space", "bad-name", "bad/name", "bad\nreturn", "bad\tname"}) {
+      assertThrows(IllegalArgumentException.class, () -> writer.writeLabel(invalid));
+      assertThrows(IllegalArgumentException.class, () -> writer.writeGoto(invalid));
+      assertThrows(IllegalArgumentException.class, () -> writer.writeIf(invalid));
+      assertThrows(IllegalArgumentException.class, () -> writer.writeFunction(invalid, 0));
+      assertThrows(IllegalArgumentException.class, () -> writer.writeCall(invalid, 0));
+    }
+
+    assertEquals("return\n", writer.toVm());
+  }
 }
