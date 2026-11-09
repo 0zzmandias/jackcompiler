@@ -135,7 +135,7 @@ class StatementCompilerTest {
     context.symbols().define("b", "int", SymbolKind.LOCAL);
     compiler(context, "void").compile(parseStatements("let a = 1; let b = a + 2;"));
     assertEquals(
-        "push constant 1\npop local 0\npush local 0\npush constant 2\nadd\npop local 1\n",
+        "push constant 1\npop local 0\n" + "push local 0\npush constant 2\nadd\npop local 1\n",
         context.writer().toVm());
   }
 
@@ -305,7 +305,7 @@ class StatementCompilerTest {
     context.symbols().define("point", "Point", SymbolKind.LOCAL);
     compiler(context, "void").compile(parseStatements("do point.move(2, 3);"));
     assertEquals(
-        "push local 0\npush constant 2\npush constant 3\ncall Point.move 3\npop temp 0\n",
+        "push local 0\npush constant 2\npush constant 3\n" + "call Point.move 3\npop temp 0\n",
         context.writer().toVm());
   }
 
@@ -400,7 +400,7 @@ class StatementCompilerTest {
     CompilationContext context = arrays(false, "values");
     compiler(context, "int").compile(parseStatements("return values[2];"));
     assertEquals(
-        "push local 0\npush constant 2\nadd\npop pointer 1\npush that 0\nreturn\n",
+        "push local 0\npush constant 2\nadd\n" + "pop pointer 1\npush that 0\nreturn\n",
         context.writer().toVm());
   }
 
@@ -409,7 +409,7 @@ class StatementCompilerTest {
     CompilationContext context = context(false);
     compiler(context, "int").compile(parseStatements("return Math.multiply(2, 3);"));
     assertEquals(
-        "push constant 2\npush constant 3\ncall Math.multiply 2\nreturn\n",
+        "push constant 2\npush constant 3\n" + "call Math.multiply 2\nreturn\n",
         context.writer().toVm());
   }
 
@@ -468,24 +468,24 @@ class StatementCompilerTest {
   }
 
   @Test
-  void rejectsUnsupportedIfWithoutGeneratingVm() {
+  void rejectsMalformedIfShapeWithoutGeneratingVm() {
     CompilationContext context = context(false);
+    GrammarNode malformed = statements(new GrammarNode(SyntaxTag.IF_STATEMENT, List.of()));
     CompilationException error =
         assertThrows(
-            CompilationException.class,
-            () -> compiler(context, "void").compile(parseStatements("if (true) { return; }")));
-    assertTrue(error.description().contains("not yet supported"));
+            CompilationException.class, () -> compiler(context, "void").compile(malformed));
+    assertTrue(error.description().contains("Malformed Jack if statement"));
     assertEquals("", context.writer().toVm());
   }
 
   @Test
-  void rejectsUnsupportedWhileWithoutGeneratingVm() {
+  void rejectsMalformedWhileShapeWithoutGeneratingVm() {
     CompilationContext context = context(false);
+    GrammarNode malformed = statements(new GrammarNode(SyntaxTag.WHILE_STATEMENT, List.of()));
     CompilationException error =
         assertThrows(
-            CompilationException.class,
-            () -> compiler(context, "void").compile(parseStatements("while (true) { return; }")));
-    assertTrue(error.description().contains("not yet supported"));
+            CompilationException.class, () -> compiler(context, "void").compile(malformed));
+    assertTrue(error.description().contains("Malformed Jack while statement"));
     assertEquals("", context.writer().toVm());
   }
 

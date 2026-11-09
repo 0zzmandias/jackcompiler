@@ -36,7 +36,7 @@ final class StatementCompiler {
     this.expressions = new ExpressionCompiler(context, instanceAccessAllowed, catalog);
   }
 
-  /** Compiles statements in source order. Conditional and loop statements follow in P3-13. */
+  /** Compiles statements in source order, including nested conditionals and loops. */
   void compile(GrammarNode statements) {
     Objects.requireNonNull(statements, "statements");
     if (statements.tag() != SyntaxTag.STATEMENTS) {
@@ -51,9 +51,8 @@ final class StatementCompiler {
         case LET_STATEMENT -> compileLet(statement);
         case DO_STATEMENT -> compileDo(statement);
         case RETURN_STATEMENT -> compileReturn(statement);
-        case IF_STATEMENT, WHILE_STATEMENT ->
-            throw CompilationException.atNode(
-                "Jack conditional and loop statements are not yet supported.", statement);
+        case IF_STATEMENT -> compileIf(statement);
+        case WHILE_STATEMENT -> compileWhile(statement);
         default -> throw CompilationException.atNode("Unsupported Jack statement.", statement);
       }
     }
@@ -137,6 +136,77 @@ final class StatementCompiler {
       context.writer().writePush(VmSegment.CONSTANT, 0);
     }
     context.writer().writeReturn();
+  }
+
+  /** Emits a conditional branch with an optional else block. */
+  private void compileIf(GrammarNode statement) {
+    List<ParseNode> children = statement.children();
+    boolean hasElse = children.size() == 11;
+    if (!hasElse && children.size() != 7) {
+      throw CompilationException.atNode("Malformed Jack if statement.", statement);
+    }
+
+    requireKeyword(children.get(0), "if");
+    requireSymbol(children.get(1), "(");
+    GrammarNode condition = requireGrammar(children.get(2), SyntaxTag.EXPRESSION);
+    requireSymbol(children.get(3), ")");
+    requireSymbol(children.get(4), "{");
+    GrammarNode thenStatements = requireGrammar(children.get(5), SyntaxTag.STATEMENTS);
+    requireSymbol(children.get(6), "}");
+
+    GrammarNode elseStatements = null;
+    if (hasElse) {
+      requireKeyword(children.get(7), "else");
+      requireSymbol(children.get(8), "{");
+      elseStatements = requireGrammar(children.get(9), SyntaxTag.STATEMENTS);
+      requireSymbol(children.get(10), "}");
+    }
+
+    String labelBase = context.nextLabel("IF");
+    String falseLabel = labelBase + "_FALSE";
+    String endLabel = labelBase + "_END";
+
+    expressions.compile(condition);
+    context.writer().writeArithmetic(VmArithmetic.NOT);
+    context.writer().writeIf(falseLabel);
+    compile(thenStatements);
+
+    if (hasElse) {
+      context.writer().writeGoto(endLabel);
+      context.writer().writeLabel(falseLabel);
+      compile(elseStatements);
+      context.writer().writeLabel(endLabel);
+    } else {
+      context.writer().writeLabel(falseLabel);
+    }
+  }
+
+  /** Reevaluates the condition at each iteration and exits when it is false. */
+  private void compileWhile(GrammarNode statement) {
+    List<ParseNode> children = statement.children();
+    if (children.size() != 7) {
+      throw CompilationException.atNode("Malformed Jack while statement.", statement);
+    }
+
+    requireKeyword(children.get(0), "while");
+    requireSymbol(children.get(1), "(");
+    GrammarNode condition = requireGrammar(children.get(2), SyntaxTag.EXPRESSION);
+    requireSymbol(children.get(3), ")");
+    requireSymbol(children.get(4), "{");
+    GrammarNode body = requireGrammar(children.get(5), SyntaxTag.STATEMENTS);
+    requireSymbol(children.get(6), "}");
+
+    String labelBase = context.nextLabel("WHILE");
+    String startLabel = labelBase + "_EXP";
+    String endLabel = labelBase + "_END";
+
+    context.writer().writeLabel(startLabel);
+    expressions.compile(condition);
+    context.writer().writeArithmetic(VmArithmetic.NOT);
+    context.writer().writeIf(endLabel);
+    compile(body);
+    context.writer().writeGoto(startLabel);
+    context.writer().writeLabel(endLabel);
   }
 
   private Symbol resolveTarget(Token name) {
