@@ -7,6 +7,7 @@ import jackcompiler.syntax.SyntaxTag;
 import jackcompiler.syntax.TerminalNode;
 import jackcompiler.token.Token;
 import jackcompiler.token.TokenType;
+import jackcompiler.vm.VmSegment;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
@@ -54,7 +55,7 @@ final class ClassCompiler {
       registerClassVariables(context, declaration);
     }
     for (GrammarNode declaration : subroutines) {
-      compileFunction(context, catalog, declaration);
+      compileSubroutine(context, catalog, declaration);
     }
     return context.writer().toVm();
   }
@@ -76,30 +77,43 @@ final class ClassCompiler {
     registerVariables(context, declaration, kind);
   }
 
-  private void compileFunction(
+  private void compileSubroutine(
       CompilationContext context, SubroutineCatalog catalog, GrammarNode declaration) {
     List<ParseNode> children = declaration.children();
     if (children.size() != 7) {
       throw CompilationException.atNode("Malformed Jack subroutine declaration.", declaration);
     }
+
     Token kind = requireToken(children.get(0), TokenType.KEYWORD);
-    if (!kind.value().equals("function")) {
-      if (kind.value().equals("method") || kind.value().equals("constructor")) {
-        throw new CompilationException(
-            "Jack methods and constructors are not yet supported.", kind.position());
-      }
-      throw new CompilationException(
-          "Unsupported Jack subroutine kind '" + kind.value() + "'.", kind.position());
-    }
+    SubroutineCatalog.Kind subroutineKind =
+        switch (kind.value()) {
+          case "function" -> SubroutineCatalog.Kind.FUNCTION;
+          case "method" -> SubroutineCatalog.Kind.METHOD;
+          case "constructor" -> SubroutineCatalog.Kind.CONSTRUCTOR;
+          default ->
+              throw new CompilationException(
+                  "Unsupported Jack subroutine kind '" + kind.value() + "'.", kind.position());
+        };
 
     String returnType = readType(children.get(1), true);
+    if (subroutineKind == SubroutineCatalog.Kind.CONSTRUCTOR
+        && !returnType.equals(context.className())) {
+      Token returnToken = SyntaxTreeNavigator.firstToken(children.get(1)).orElseThrow();
+      throw new CompilationException(
+          "Constructor must declare its enclosing class '"
+              + context.className()
+              + "' as return type.",
+          returnToken.position());
+    }
+
     Token name = requireToken(children.get(2), TokenType.IDENTIFIER);
     requireSymbol(children.get(3), "(");
     GrammarNode parameters = requireGrammar(children.get(4), SyntaxTag.PARAMETER_LIST);
     requireSymbol(children.get(5), ")");
     GrammarNode body = requireGrammar(children.get(6), SyntaxTag.SUBROUTINE_BODY);
 
-    context.startSubroutine(name.value(), false);
+    boolean method = subroutineKind == SubroutineCatalog.Kind.METHOD;
+    context.startSubroutine(name.value(), method);
     registerParameters(context, parameters);
     GrammarNode statements = registerLocals(context, body);
 
@@ -107,7 +121,24 @@ final class ClassCompiler {
         .writer()
         .writeFunction(
             context.qualifiedSubroutineName(), context.symbols().count(SymbolKind.LOCAL));
-    new StatementCompiler(context, false, catalog, returnType).compile(statements);
+
+    switch (subroutineKind) {
+      case METHOD -> {
+        context.writer().writePush(VmSegment.ARGUMENT, 0);
+        context.writer().writePop(VmSegment.POINTER, 0);
+      }
+      case CONSTRUCTOR -> {
+        context.writer().writePush(VmSegment.CONSTANT, context.symbols().count(SymbolKind.FIELD));
+        context.writer().writeCall("Memory.alloc", 1);
+        context.writer().writePop(VmSegment.POINTER, 0);
+      }
+      case FUNCTION -> {
+        // Static functions have no instance receiver to initialize.
+      }
+    }
+
+    boolean instanceAccessAllowed = subroutineKind != SubroutineCatalog.Kind.FUNCTION;
+    new StatementCompiler(context, instanceAccessAllowed, catalog, returnType).compile(statements);
   }
 
   private void registerParameters(CompilationContext context, GrammarNode parameters) {

@@ -267,35 +267,28 @@ class ClassCompilerTest {
   }
 
   @Test
-  void rejectsMethodUntilObjectCompilationIncrement() {
-    CompilationException error =
-        assertThrows(
-            CompilationException.class,
-            () -> compile("class Main { method void reset() { return; } }"));
-    assertTrue(error.description().contains("methods and constructors are not yet supported"));
-    assertTrue(error.position().isPresent());
+  void compilesMethodWithImplicitReceiver() {
+    assertEquals(
+        "function Main.reset 0\npush argument 0\npop pointer 0\n" + "push constant 0\nreturn\n",
+        compile("class Main { method void reset() { return; } }"));
   }
 
   @Test
-  void rejectsConstructorUntilObjectCompilationIncrement() {
-    CompilationException error =
-        assertThrows(
-            CompilationException.class,
-            () -> compile("class Main { constructor Main new() { return this; } }"));
-    assertTrue(error.description().contains("methods and constructors are not yet supported"));
-    assertTrue(error.position().isPresent());
+  void compilesConstructorWithAllocationAndThisReturn() {
+    assertEquals(
+        "function Main.new 0\npush constant 0\ncall Memory.alloc 1\n"
+            + "pop pointer 0\npush pointer 0\nreturn\n",
+        compile("class Main { constructor Main new() { return this; } }"));
   }
 
   @Test
-  void rejectsAnyClassContainingUnsupportedMethod() {
-    CompilationException error =
-        assertThrows(
-            CompilationException.class,
-            () ->
-                compile(
-                    "class Main { function void run() { return; } "
-                        + "method void other() { return; } }"));
-    assertTrue(error.description().contains("not yet supported"));
+  void compilesMixedFunctionsAndMethodsInDeclarationOrder() {
+    assertEquals(
+        "function Main.run 0\npush constant 0\nreturn\n"
+            + "function Main.other 0\npush argument 0\npop pointer 0\n"
+            + "push constant 0\nreturn\n",
+        compile(
+            "class Main { function void run() { return; } " + "method void other() { return; } }"));
   }
 
   @Test
