@@ -1,5 +1,6 @@
 package jackcompiler.compiler;
 
+import jackcompiler.symbol.Symbol;
 import jackcompiler.syntax.GrammarNode;
 import jackcompiler.syntax.ParseNode;
 import jackcompiler.syntax.SyntaxTag;
@@ -12,23 +13,35 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Set;
 
-/** Compiles basic Jack expression CST nodes into VM stack instructions. */
+/** Compiles Jack expressions into VM stack instructions. */
 final class ExpressionCompiler {
 
   private static final Set<String> BINARY_OPERATORS =
-      Set.of("+", "-", "*", "/", "&", "|", "<", ">", "=");
+      Set.of("+", "-", "*", "/", "&", "|", ">", "<", "=");
 
   private final CompilationContext context;
+  private final boolean instanceAccessAllowed;
 
   ExpressionCompiler(CompilationContext context) {
+    this(context, true);
+  }
+
+  /**
+   * Creates an expression compiler for the current subroutine.
+   *
+   * @param context class compilation state and VM writer
+   * @param instanceAccessAllowed whether the current routine may access this and fields
+   */
+  ExpressionCompiler(CompilationContext context, boolean instanceAccessAllowed) {
     this.context = Objects.requireNonNull(context, "context");
+    this.instanceAccessAllowed = instanceAccessAllowed;
   }
 
   /**
    * Compiles an expression in Jack's left-to-right grammatical order.
    *
-   * <p>This increment supports integer constants, binary and unary operators, and explicit
-   * grouping. Other term forms are introduced in later increments.
+   * <p>Supports constants, variable reads, binary and unary operators, and grouping. Calls and
+   * indexed array reads are introduced in later increments.
    */
   void compile(GrammarNode expression) {
     Objects.requireNonNull(expression, "expression");
@@ -78,7 +91,7 @@ final class ExpressionCompiler {
     }
 
     throw CompilationException.atNode(
-        "Unsupported or malformed Jack term in basic expression compilation.", term);
+        "Unsupported or malformed Jack term in expression compilation.", term);
   }
 
   private void compileAtomicTerm(ParseNode node) {
@@ -87,11 +100,18 @@ final class ExpressionCompiler {
     }
 
     Token token = terminal.token();
-    if (token.type() != TokenType.INTEGER_CONSTANT) {
-      throw CompilationException.atNode(
-          "Jack term '" + token.value() + "' is not yet supported.", node);
+    switch (token.type()) {
+      case INTEGER_CONSTANT -> compileInteger(node, token);
+      case STRING_CONSTANT -> compileString(node, token);
+      case KEYWORD -> compileKeyword(node, token);
+      case IDENTIFIER -> compileVariable(node, token);
+      case SYMBOL ->
+          throw CompilationException.atNode(
+              "Jack term '" + token.value() + "' is not yet supported.", node);
     }
+  }
 
+  private void compileInteger(ParseNode node, Token token) {
     String literal = token.value();
     if (!literal.matches("[0-9]+")) {
       throw CompilationException.atNode("Invalid Jack integer constant '" + literal + "'.", node);
@@ -111,6 +131,82 @@ final class ExpressionCompiler {
     }
 
     context.writer().writePush(VmSegment.CONSTANT, value);
+  }
+
+  private void compileString(ParseNode node, Token token) {
+    String value = token.value();
+
+    if (value.length() > 32767) {
+      throw CompilationException.atNode(
+          "Jack string constant exceeds the supported VM length of 32767.", node);
+    }
+
+    context.writer().writePush(VmSegment.CONSTANT, value.length());
+    context.writer().writeCall("String.new", 1);
+
+    for (int index = 0; index < value.length(); index++) {
+      int character = value.charAt(index);
+      writeCharacter(character);
+      context.writer().writeCall("String.appendChar", 2);
+    }
+  }
+
+  private void writeCharacter(int character) {
+    if (character <= 32767) {
+      context.writer().writePush(VmSegment.CONSTANT, character);
+      return;
+    }
+
+    context.writer().writePush(VmSegment.CONSTANT, 65535 - character);
+    context.writer().writeArithmetic(VmArithmetic.NOT);
+  }
+
+  private void compileKeyword(ParseNode node, Token token) {
+    switch (token.value()) {
+      case "true" -> {
+        context.writer().writePush(VmSegment.CONSTANT, 0);
+        context.writer().writeArithmetic(VmArithmetic.NOT);
+      }
+      case "false", "null" -> context.writer().writePush(VmSegment.CONSTANT, 0);
+      case "this" -> {
+        requireInstanceAccess(node, "this");
+        context.writer().writePush(VmSegment.POINTER, 0);
+      }
+      default ->
+          throw CompilationException.atNode(
+              "Unsupported Jack keyword constant '" + token.value() + "'.", node);
+    }
+  }
+
+  private void compileVariable(ParseNode node, Token token) {
+    Symbol symbol =
+        context
+            .symbols()
+            .resolve(token.value())
+            .orElseThrow(
+                () ->
+                    CompilationException.atNode(
+                        "Undefined Jack variable '" + token.value() + "'.", node));
+
+    VmSegment segment =
+        switch (symbol.kind()) {
+          case STATIC -> VmSegment.STATIC;
+          case FIELD -> {
+            requireInstanceAccess(node, "field '" + token.value() + "'");
+            yield VmSegment.THIS;
+          }
+          case ARGUMENT -> VmSegment.ARGUMENT;
+          case LOCAL -> VmSegment.LOCAL;
+        };
+
+    context.writer().writePush(segment, symbol.index());
+  }
+
+  private void requireInstanceAccess(ParseNode node, String subject) {
+    if (!instanceAccessAllowed) {
+      throw CompilationException.atNode(
+          "Cannot access " + subject + " inside a Jack function.", node);
+    }
   }
 
   private void compileUnaryTerm(List<ParseNode> children) {
