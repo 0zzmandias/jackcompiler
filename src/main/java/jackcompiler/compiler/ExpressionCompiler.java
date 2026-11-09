@@ -129,7 +129,6 @@ final class ExpressionCompiler {
         receiverSegment = segmentOf(receiver);
         receiverIndex = receiver.index();
         target = receiver.type() + "." + name.value();
-
         if (receiver.type().equals(context.className())) {
           signature = lookupCurrent(name);
           if (!signature.isMethod()) {
@@ -172,7 +171,6 @@ final class ExpressionCompiler {
     for (GrammarNode expression : expressions) {
       compile(expression);
     }
-
     int argumentCount = expressions.size() + ((pushThis || receiverSegment != null) ? 1 : 0);
     context.writer().writeCall(target, argumentCount);
   }
@@ -204,7 +202,6 @@ final class ExpressionCompiler {
     if (children.size() % 2 == 0) {
       throw CompilationException.atNode("Malformed Jack argument list.", list);
     }
-
     List<GrammarNode> expressions = new ArrayList<>();
     for (int index = 0; index < children.size(); index++) {
       ParseNode child = children.get(index);
@@ -236,13 +233,42 @@ final class ExpressionCompiler {
       if (children.size() == 4
           && children.get(1) instanceof TerminalNode separator
           && separator.token().value().equals("[")) {
-        throw CompilationException.atNode("Array reads are not yet supported.", term);
+        compileArrayRead(term);
+        return;
       }
       compileCall(children);
       return;
     }
-
     throw CompilationException.atNode("Unsupported or malformed Jack term.", term);
+  }
+
+  /** Pushes the value stored at a variable base address plus a compiled index. */
+  private void compileArrayRead(GrammarNode term) {
+    List<ParseNode> children = term.children();
+    Token arrayName = requireToken(children.get(0), TokenType.IDENTIFIER);
+    requireSymbol(children.get(1), "[");
+    GrammarNode index = requireGrammar(children.get(2), SyntaxTag.EXPRESSION);
+    requireSymbol(children.get(3), "]");
+
+    Symbol array =
+        context
+            .symbols()
+            .resolve(arrayName.value())
+            .orElseThrow(
+                () ->
+                    new CompilationException(
+                        "Undefined Jack variable '" + arrayName.value() + "'.",
+                        arrayName.position()));
+
+    if (array.kind() == SymbolKind.FIELD) {
+      requireInstanceAccess(new TerminalNode(arrayName), "field '" + arrayName.value() + "'");
+    }
+
+    context.writer().writePush(segmentOf(array), array.index());
+    compile(index);
+    context.writer().writeArithmetic(VmArithmetic.ADD);
+    context.writer().writePop(VmSegment.POINTER, 1);
+    context.writer().writePush(VmSegment.THAT, 0);
   }
 
   private void compileAtomicTerm(ParseNode node) {
@@ -280,7 +306,6 @@ final class ExpressionCompiler {
       throw CompilationException.atNode(
           "Jack integer constant exceeds 32767: " + literal + ".", node);
     }
-
     context.writer().writePush(VmSegment.CONSTANT, value);
   }
 
@@ -335,7 +360,6 @@ final class ExpressionCompiler {
                 () ->
                     CompilationException.atNode(
                         "Undefined Jack variable '" + token.value() + "'.", node));
-
     if (symbol.kind() == SymbolKind.FIELD) {
       requireInstanceAccess(node, "field '" + token.value() + "'");
     }
