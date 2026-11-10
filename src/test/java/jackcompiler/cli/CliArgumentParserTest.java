@@ -2,7 +2,6 @@ package jackcompiler.cli;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -109,8 +108,8 @@ class CliArgumentParserTest {
   }
 
   @ParameterizedTest
-  @ValueSource(strings = {"compile", "tokens", "Tokenize", "", "help"})
-  void rejectsUnimplementedOrUnknownCommands(String command) {
+  @ValueSource(strings = {"tokens", "Tokenize", "", "help"})
+  void rejectsUnknownCommands(String command) {
     IllegalArgumentException error =
         assertThrows(
             IllegalArgumentException.class,
@@ -243,9 +242,10 @@ class CliArgumentParserTest {
   void includesAllSupportedFormsInUsage() {
     assertTrue(CliArgumentParser.USAGE.contains("tokenize"));
     assertTrue(CliArgumentParser.USAGE.contains("parse"));
+    assertTrue(CliArgumentParser.USAGE.contains("compile"));
     assertTrue(CliArgumentParser.USAGE.contains("--help"));
     assertTrue(CliArgumentParser.USAGE.contains("--output-dir"));
-    assertFalse(CliArgumentParser.USAGE.contains("jackcompiler compile "));
+    assertTrue(CliArgumentParser.USAGE.contains("jackcompiler compile "));
   }
 
   @Test
@@ -419,6 +419,180 @@ class CliArgumentParserTest {
         assertThrows(
             IllegalArgumentException.class,
             () -> parser.parse(new String[] {"parse", "Main.jack", null}));
+
+    assertTrue(error.getMessage().contains("Unexpected argument"));
+  }
+
+  @Test
+  void parsesCompileWithSourceFile() {
+    CliArguments result = parser.parse(new String[] {"compile", "Main.jack"});
+
+    assertEquals(Command.COMPILE, result.command());
+    assertEquals(Path.of("Main.jack").toAbsolutePath().normalize(), result.input().orElseThrow());
+    assertTrue(result.outputDirectory().isEmpty());
+  }
+
+  @Test
+  void parsesCompileWithDirectory() {
+    CliArguments result = parser.parse(new String[] {"compile", "examples"});
+
+    assertEquals(Command.COMPILE, result.command());
+    assertEquals(Path.of("examples").toAbsolutePath().normalize(), result.input().orElseThrow());
+  }
+
+  @Test
+  void parsesCompileWithCustomOutputDirectory() {
+    CliArguments result =
+        parser.parse(new String[] {"compile", "Main.jack", "--output-dir", "vm-out"});
+
+    assertEquals(Command.COMPILE, result.command());
+    assertEquals(
+        Path.of("vm-out").toAbsolutePath().normalize(), result.outputDirectory().orElseThrow());
+  }
+
+  @Test
+  void normalizesCompileInputAndOutputPaths() {
+    CliArguments result =
+        parser.parse(new String[] {"compile", "a/../Main.jack", "--output-dir", "a/../vm"});
+
+    assertEquals(Path.of("Main.jack").toAbsolutePath().normalize(), result.input().orElseThrow());
+    assertEquals(
+        Path.of("vm").toAbsolutePath().normalize(), result.outputDirectory().orElseThrow());
+  }
+
+  @Test
+  void preservesSpacesAndUnicodeForCompilePaths() {
+    CliArguments result =
+        parser.parse(
+            new String[] {"compile", "Meus Arquivos/Olá.jack", "--output-dir", "Saída VM"});
+
+    assertEquals(
+        Path.of("Meus Arquivos/Olá.jack").toAbsolutePath().normalize(),
+        result.input().orElseThrow());
+    assertEquals(
+        Path.of("Saída VM").toAbsolutePath().normalize(), result.outputDirectory().orElseThrow());
+  }
+
+  @Test
+  void doesNotMutateCompileArgumentArray() {
+    String[] arguments = {"compile", "Main.jack", "--output-dir", "out"};
+    String[] original = arguments.clone();
+
+    parser.parse(arguments);
+
+    assertArrayEquals(original, arguments);
+  }
+
+  @Test
+  void rejectsCompileWithoutInput() {
+    IllegalArgumentException error =
+        assertThrows(IllegalArgumentException.class, () -> parser.parse(new String[] {"compile"}));
+
+    assertTrue(error.getMessage().contains("Compile requires an input path"));
+    assertTrue(error.getMessage().contains("Usage:"));
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = {"", " ", "\t", "--output-dir", "--help"})
+  void rejectsBlankOrOptionLikeCompileInput(String input) {
+    assertThrows(
+        IllegalArgumentException.class, () -> parser.parse(new String[] {"compile", input}));
+  }
+
+  @Test
+  void rejectsNullCompileInput() {
+    assertThrows(
+        IllegalArgumentException.class, () -> parser.parse(new String[] {"compile", null}));
+  }
+
+  @Test
+  void rejectsAdditionalCompilePositionalArgument() {
+    IllegalArgumentException error =
+        assertThrows(
+            IllegalArgumentException.class,
+            () -> parser.parse(new String[] {"compile", "Main.jack", "extra"}));
+
+    assertTrue(error.getMessage().contains("Unexpected argument"));
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = {"--unknown", "--help", "-v"})
+  void rejectsUnknownCompileOptions(String option) {
+    IllegalArgumentException error =
+        assertThrows(
+            IllegalArgumentException.class,
+            () -> parser.parse(new String[] {"compile", "Main.jack", option}));
+
+    assertTrue(error.getMessage().contains("Unknown option"));
+  }
+
+  @Test
+  void rejectsDuplicateCompileOutputDirectoryOption() {
+    IllegalArgumentException error =
+        assertThrows(
+            IllegalArgumentException.class,
+            () ->
+                parser.parse(
+                    new String[] {
+                      "compile", "Main.jack", "--output-dir", "out", "--output-dir", "other"
+                    }));
+
+    assertTrue(error.getMessage().contains("Duplicate"));
+  }
+
+  @Test
+  void rejectsCompileOutputOptionWithoutDirectory() {
+    IllegalArgumentException error =
+        assertThrows(
+            IllegalArgumentException.class,
+            () -> parser.parse(new String[] {"compile", "Main.jack", "--output-dir"}));
+
+    assertTrue(error.getMessage().contains("Missing directory"));
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = {"", " ", "\t", "--help", "--output-dir"})
+  void rejectsBlankOrOptionLikeCompileOutputDirectory(String directory) {
+    assertThrows(
+        IllegalArgumentException.class,
+        () -> parser.parse(new String[] {"compile", "Main.jack", "--output-dir", directory}));
+  }
+
+  @Test
+  void rejectsNullCompileOutputDirectory() {
+    assertThrows(
+        IllegalArgumentException.class,
+        () -> parser.parse(new String[] {"compile", "Main.jack", "--output-dir", null}));
+  }
+
+  @Test
+  void rejectsInvalidCompileInputPath() {
+    IllegalArgumentException error =
+        assertThrows(
+            IllegalArgumentException.class,
+            () -> parser.parse(new String[] {"compile", "bad\0path"}));
+
+    assertInstanceOf(InvalidPathException.class, error.getCause());
+    assertTrue(error.getMessage().contains("Invalid input path"));
+  }
+
+  @Test
+  void rejectsInvalidCompileOutputDirectoryPath() {
+    IllegalArgumentException error =
+        assertThrows(
+            IllegalArgumentException.class,
+            () -> parser.parse(new String[] {"compile", "Main.jack", "--output-dir", "bad\0path"}));
+
+    assertInstanceOf(InvalidPathException.class, error.getCause());
+    assertTrue(error.getMessage().contains("Invalid output directory path"));
+  }
+
+  @Test
+  void rejectsNullTrailingCompileArgument() {
+    IllegalArgumentException error =
+        assertThrows(
+            IllegalArgumentException.class,
+            () -> parser.parse(new String[] {"compile", "Main.jack", null}));
 
     assertTrue(error.getMessage().contains("Unexpected argument"));
   }

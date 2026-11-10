@@ -11,6 +11,7 @@ public record CliArguments(Command command, Optional<Path> input, Optional<Path>
   public enum Command {
     TOKENIZE,
     PARSE,
+    COMPILE,
     HELP
   }
 
@@ -25,7 +26,13 @@ public record CliArguments(Command command, Optional<Path> input, Optional<Path>
         throw new IllegalArgumentException("Help does not accept source or output paths.");
       }
     } else if (input.isEmpty()) {
-      String name = command == Command.TOKENIZE ? "Tokenize" : "Parse";
+      String name =
+          switch (command) {
+            case TOKENIZE -> "Tokenize";
+            case PARSE -> "Parse";
+            case COMPILE -> "Compile";
+            case HELP -> throw new IllegalStateException("Help has no required input.");
+          };
       throw new IllegalArgumentException(name + " requires an input path.");
     }
 

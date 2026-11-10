@@ -167,4 +167,74 @@ class CliArgumentsTest {
     assertFalse(tokenize.equals(parse));
     assertEquals(tokenize.input(), parse.input());
   }
+
+  @Test
+  void representsCompileWithoutCustomOutputDirectory() {
+    var arguments =
+        new CliArguments(Command.COMPILE, Optional.of(Path.of("Main.jack")), Optional.empty());
+
+    assertEquals(Command.COMPILE, arguments.command());
+    assertEquals(
+        Path.of("Main.jack").toAbsolutePath().normalize(), arguments.input().orElseThrow());
+    assertTrue(arguments.outputDirectory().isEmpty());
+  }
+
+  @Test
+  void normalizesCompileInputAndOutputPaths() {
+    var arguments =
+        new CliArguments(
+            Command.COMPILE,
+            Optional.of(Path.of("examples", "..", "Main.jack")),
+            Optional.of(Path.of("out", "temp", "..")));
+
+    assertEquals(
+        Path.of("Main.jack").toAbsolutePath().normalize(), arguments.input().orElseThrow());
+    assertEquals(
+        Path.of("out").toAbsolutePath().normalize(), arguments.outputDirectory().orElseThrow());
+  }
+
+  @Test
+  void compileAcceptsDirectoryInputWithoutCheckingItsExistence() {
+    var arguments =
+        new CliArguments(Command.COMPILE, Optional.of(Path.of("sources")), Optional.empty());
+
+    assertEquals(Path.of("sources").toAbsolutePath().normalize(), arguments.input().orElseThrow());
+  }
+
+  @Test
+  void rejectsMissingCompileInput() {
+    IllegalArgumentException error =
+        assertThrows(
+            IllegalArgumentException.class,
+            () -> new CliArguments(Command.COMPILE, Optional.empty(), Optional.empty()));
+
+    assertTrue(error.getMessage().contains("Compile requires an input path"));
+  }
+
+  @Test
+  void rejectsNullInputOptionalForCompile() {
+    assertThrows(
+        NullPointerException.class,
+        () -> new CliArguments(Command.COMPILE, null, Optional.empty()));
+  }
+
+  @Test
+  void rejectsNullOutputDirectoryOptionalForCompile() {
+    assertThrows(
+        NullPointerException.class,
+        () -> new CliArguments(Command.COMPILE, Optional.of(Path.of("Main.jack")), null));
+  }
+
+  @Test
+  void keepsAllThreeOperationsDistinct() {
+    var source = Optional.of(Path.of("Main.jack"));
+    var tokenize = new CliArguments(Command.TOKENIZE, source, Optional.empty());
+    var parse = new CliArguments(Command.PARSE, source, Optional.empty());
+    var compile = new CliArguments(Command.COMPILE, source, Optional.empty());
+
+    assertFalse(compile.equals(tokenize));
+    assertFalse(compile.equals(parse));
+    assertEquals(tokenize.input(), compile.input());
+    assertEquals(parse.input(), compile.input());
+  }
 }

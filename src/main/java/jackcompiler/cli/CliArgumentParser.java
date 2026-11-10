@@ -11,10 +11,11 @@ public final class CliArgumentParser {
   public static final String USAGE =
       "Usage: jackcompiler tokenize <file.jack|directory> [--output-dir <directory>]\n"
           + "       jackcompiler parse <file.jack|directory> [--output-dir <directory>]\n"
+          + "       jackcompiler compile <file.jack|directory> [--output-dir <directory>]\n"
           + "       jackcompiler --help";
 
   /**
-   * Accepts tokenize, parse, and the standalone help option.
+   * Accepts tokenize, parse, compile, and the standalone help option.
    *
    * @param args command-line arguments, excluding the executable name
    * @return validated, normalized arguments
@@ -38,13 +39,18 @@ public final class CliArgumentParser {
         switch (args[0]) {
           case "tokenize" -> CliArguments.Command.TOKENIZE;
           case "parse" -> CliArguments.Command.PARSE;
+          case "compile" -> CliArguments.Command.COMPILE;
           default -> throw invalid("Unknown command: " + args[0]);
         };
 
     if (args.length == 1 || args[1] == null || args[1].isBlank() || args[1].startsWith("--")) {
       throw invalid(
-          (command == CliArguments.Command.TOKENIZE ? "Tokenize" : "Parse")
-              + " requires an input path.");
+          switch (command) {
+            case TOKENIZE -> "Tokenize requires an input path.";
+            case PARSE -> "Parse requires an input path.";
+            case COMPILE -> "Compile requires an input path.";
+            case HELP -> throw new IllegalStateException("Help is standalone.");
+          });
     }
 
     Path input = parsePath(args[1], "input");

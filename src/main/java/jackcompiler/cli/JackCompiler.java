@@ -1,8 +1,10 @@
 package jackcompiler.cli;
 
+import jackcompiler.application.CompileCommand;
 import jackcompiler.application.ParseCommand;
 import jackcompiler.application.SourceProcessingException;
 import jackcompiler.application.TokenizeCommand;
+import jackcompiler.compiler.CompilationException;
 import jackcompiler.lexer.LexicalException;
 import jackcompiler.parser.SyntaxException;
 import java.io.IOException;
@@ -26,7 +28,7 @@ public final class JackCompiler {
   }
 
   /**
-   * Executes an implemented operation and reports its results.
+   * Executes a supported operation and reports its results.
    *
    * @return 0 for success or help, 1 for processing failures, and 2 for invalid arguments
    */
@@ -52,9 +54,12 @@ public final class JackCompiler {
       Path input = arguments.input().orElseThrow();
 
       List<Path> outputs =
-          arguments.command() == CliArguments.Command.TOKENIZE
-              ? new TokenizeCommand().execute(input, arguments.outputDirectory())
-              : new ParseCommand().execute(input, arguments.outputDirectory());
+          switch (arguments.command()) {
+            case TOKENIZE -> new TokenizeCommand().execute(input, arguments.outputDirectory());
+            case PARSE -> new ParseCommand().execute(input, arguments.outputDirectory());
+            case COMPILE -> new CompileCommand().execute(input, arguments.outputDirectory());
+            case HELP -> throw new IllegalStateException("Help is handled before dispatch.");
+          };
 
       for (Path output : outputs) {
         out.println("Generated: " + output);
@@ -85,6 +90,16 @@ public final class JackCompiler {
           syntax.position().line(),
           syntax.position().column(),
           syntax.getMessage());
+    } else if (cause instanceof CompilationException compilation) {
+      if (compilation.position().isPresent()) {
+        var position = compilation.position().orElseThrow();
+        err.printf(
+            "Compilation error in %s at line %d, column %d: %s%n",
+            exception.sourceFile(), position.line(), position.column(), compilation.description());
+      } else {
+        err.printf(
+            "Compilation error in %s: %s%n", exception.sourceFile(), compilation.description());
+      }
     } else if (cause instanceof IOException) {
       err.printf("I/O error in %s: %s%n", exception.sourceFile(), cause.getMessage());
     } else {
