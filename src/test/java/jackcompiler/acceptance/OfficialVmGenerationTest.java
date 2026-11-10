@@ -31,6 +31,8 @@ class OfficialVmGenerationTest {
 
   private static final String RESOURCE_ROOT = "/nand2tetris/project11/";
 
+  private static final List<String> SQUARE_CLASSES = List.of("Main", "Square", "SquareGame");
+
   @TempDir Path tempDir;
 
   @ParameterizedTest(name = "{0}: official Jack-to-VM generation")
@@ -131,6 +133,108 @@ class OfficialVmGenerationTest {
     assertTrue(vm.contains("call Output.println 0\n"));
   }
 
+  @Test
+  void squareCompilesAllThreeOfficialClassesBesideSources() throws Exception {
+    Path sourceDirectory = Files.createDirectory(tempDir.resolve("Square"));
+    writeSquareSources(sourceDirectory);
+
+    List<Path> expectedOutputs =
+        SQUARE_CLASSES.stream().map(name -> sourceDirectory.resolve(name + ".vm")).toList();
+
+    List<Path> generated = new CompileCommand().execute(sourceDirectory, Optional.empty());
+
+    assertEquals(expectedOutputs, generated);
+
+    for (String name : SQUARE_CLASSES) {
+      Path source = sourceDirectory.resolve(name + ".jack");
+      Path output = sourceDirectory.resolve(name + ".vm");
+
+      assertTrue(Files.isRegularFile(output));
+      assertTrue(
+          Files.readString(output, StandardCharsets.UTF_8).contains("function " + name + "."));
+      assertFalse(Files.readString(output, StandardCharsets.UTF_8).contains("\r"));
+
+      assertArrayEquals(readOfficialSource("Square", name + ".jack"), Files.readAllBytes(source));
+
+      assertFalse(Files.exists(sourceDirectory.resolve(name + "T.xml")));
+      assertFalse(Files.exists(sourceDirectory.resolve(name + "P.xml")));
+    }
+  }
+
+  @Test
+  void squareGeneratesConstructorsMethodsAndInteractiveCalls() throws Exception {
+    Path sourceDirectory = Files.createDirectory(tempDir.resolve("Square"));
+    writeSquareSources(sourceDirectory);
+
+    Path outputDirectory = tempDir.resolve("generated-square");
+
+    List<Path> expectedOutputs =
+        SQUARE_CLASSES.stream().map(name -> outputDirectory.resolve(name + ".vm")).toList();
+
+    List<Path> generated =
+        new CompileCommand().execute(sourceDirectory, Optional.of(outputDirectory));
+
+    assertEquals(expectedOutputs, generated);
+
+    for (String name : SQUARE_CLASSES) {
+      assertTrue(Files.isRegularFile(outputDirectory.resolve(name + ".vm")));
+      assertFalse(Files.exists(sourceDirectory.resolve(name + ".vm")));
+      assertArrayEquals(
+          readOfficialSource("Square", name + ".jack"),
+          Files.readAllBytes(sourceDirectory.resolve(name + ".jack")));
+    }
+
+    String main = Files.readString(outputDirectory.resolve("Main.vm"), StandardCharsets.UTF_8);
+    String square = Files.readString(outputDirectory.resolve("Square.vm"), StandardCharsets.UTF_8);
+    String game =
+        Files.readString(outputDirectory.resolve("SquareGame.vm"), StandardCharsets.UTF_8);
+
+    assertTrue(main.contains("function Main.main 1\n"));
+    assertTrue(main.contains("call SquareGame.new 0\n"));
+    assertTrue(main.contains("call SquareGame.run 1\n"));
+    assertTrue(main.contains("call SquareGame.dispose 1\n"));
+
+    assertTrue(square.contains("function Square.new 0\n"));
+    assertTrue(square.contains("call Memory.alloc 1\n"));
+    assertTrue(square.contains("pop pointer 0\n"));
+    assertTrue(square.contains("function Square.dispose 0\n"));
+    assertTrue(square.contains("function Square.draw 0\n"));
+    assertTrue(square.contains("function Square.erase 0\n"));
+    assertTrue(square.contains("function Square.incSize 0\n"));
+    assertTrue(square.contains("function Square.decSize 0\n"));
+    assertTrue(square.contains("function Square.moveUp 0\n"));
+    assertTrue(square.contains("function Square.moveDown 0\n"));
+    assertTrue(square.contains("function Square.moveLeft 0\n"));
+    assertTrue(square.contains("function Square.moveRight 0\n"));
+    assertTrue(square.contains("call Screen.drawRectangle 4\n"));
+
+    assertTrue(game.contains("function SquareGame.new 0\n"));
+    assertTrue(game.contains("call Square.new 3\n"));
+    assertTrue(game.contains("function SquareGame.dispose 0\n"));
+    assertTrue(game.contains("call Square.dispose 1\n"));
+    assertTrue(game.contains("function SquareGame.moveSquare 0\n"));
+    assertTrue(game.contains("function SquareGame.run 2\n"));
+    assertTrue(game.contains("call Keyboard.keyPressed 0\n"));
+    assertTrue(game.contains("call SquareGame.moveSquare 1\n"));
+    assertTrue(game.contains("call Square.moveUp 1\n"));
+    assertTrue(game.contains("call Square.moveDown 1\n"));
+    assertTrue(game.contains("call Square.moveLeft 1\n"));
+    assertTrue(game.contains("call Square.moveRight 1\n"));
+    assertTrue(game.contains("call Square.incSize 1\n"));
+    assertTrue(game.contains("call Square.decSize 1\n"));
+    assertTrue(game.contains("call Sys.wait 1\n"));
+
+    assertTrue(main.indexOf("call SquareGame.new 0\n") < main.indexOf("call SquareGame.run 1\n"));
+    assertTrue(
+        main.indexOf("call SquareGame.run 1\n") < main.indexOf("call SquareGame.dispose 1\n"));
+  }
+
+  private void writeSquareSources(Path directory) throws IOException {
+    for (String name : SQUARE_CLASSES) {
+      Files.write(directory.resolve(name + ".jack"), readOfficialSource("Square", name + ".jack"));
+    }
+  }
+
   private String compileOfficialProgram(String program) throws Exception {
     Path directory = Files.createDirectory(tempDir.resolve(program));
     Path source = directory.resolve("Main.jack");
@@ -144,7 +248,11 @@ class OfficialVmGenerationTest {
   }
 
   private static byte[] readOfficialSource(String program) throws IOException {
-    String resource = RESOURCE_ROOT + program + "/Main.jack";
+    return readOfficialSource(program, "Main.jack");
+  }
+
+  private static byte[] readOfficialSource(String program, String sourceName) throws IOException {
+    String resource = RESOURCE_ROOT + program + "/" + sourceName;
 
     try (InputStream input = OfficialVmGenerationTest.class.getResourceAsStream(resource)) {
       if (input == null) {
