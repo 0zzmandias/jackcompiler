@@ -34,7 +34,7 @@ class OfficialVmGenerationTest {
   @TempDir Path tempDir;
 
   @ParameterizedTest(name = "{0}: official Jack-to-VM generation")
-  @ValueSource(strings = {"Seven", "Average"})
+  @ValueSource(strings = {"Seven", "Average", "ConvertToBin", "ComplexArrays"})
   void compilesOfficialSourceWithoutModifyingInput(String program) throws Exception {
     Path directory = Files.createDirectory(tempDir.resolve(program));
     Path source = directory.resolve("Main.jack");
@@ -88,6 +88,47 @@ class OfficialVmGenerationTest {
     assertTrue(vm.contains("call Output.printInt 1\n"));
 
     assertTrue(vm.indexOf("call Math.divide 2\n") < vm.lastIndexOf("call Output.printInt 1\n"));
+  }
+
+  @Test
+  void convertToBinGeneratesMemoryAndBitMaskInstructions() throws Exception {
+    String vm = compileOfficialProgram("ConvertToBin");
+
+    assertTrue(vm.contains("function Main.main 1\n"));
+    assertTrue(vm.contains("function Main.convert 3\n"));
+    assertTrue(vm.contains("function Main.nextMask 0\n"));
+    assertTrue(vm.contains("function Main.fillMemory 0\n"));
+
+    assertTrue(vm.contains("call Main.fillMemory 3\n"));
+    assertTrue(vm.contains("call Memory.peek 1\n"));
+    assertTrue(vm.contains("call Main.convert 1\n"));
+    assertTrue(vm.contains("call Main.nextMask 1\n"));
+    assertTrue(vm.contains("call Memory.poke 2\n"));
+    assertTrue(vm.contains("call Math.multiply 2\n"));
+
+    assertTrue(vm.indexOf("call Memory.peek 1\n") < vm.indexOf("call Main.convert 1\n"));
+  }
+
+  @Test
+  void complexArraysGeneratesIndirectAddressingAndNestedCalls() throws Exception {
+    String vm = compileOfficialProgram("ComplexArrays");
+
+    assertTrue(vm.contains("function Main.main 3\n"));
+    assertTrue(vm.contains("function Main.double 0\n"));
+    assertTrue(vm.contains("function Main.fill 0\n"));
+
+    assertTrue(vm.contains("call Array.new 1\n"));
+    assertTrue(vm.contains("call Main.double 1\n"));
+    assertTrue(vm.contains("call Main.fill 2\n"));
+    assertTrue(vm.contains("call Math.multiply 2\n"));
+
+    assertTrue(vm.contains("push that 0\n"));
+    assertTrue(vm.contains("pop pointer 1\n"));
+    assertTrue(vm.contains("pop that 0\n"));
+
+    assertTrue(vm.contains("call Output.printString 1\n"));
+    assertTrue(vm.contains("call Output.printInt 1\n"));
+    assertTrue(vm.contains("call Output.println 0\n"));
   }
 
   private String compileOfficialProgram(String program) throws Exception {
