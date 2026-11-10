@@ -33,6 +33,8 @@ class OfficialVmGenerationTest {
 
   private static final List<String> SQUARE_CLASSES = List.of("Main", "Square", "SquareGame");
 
+  private static final List<String> PONG_CLASSES = List.of("Ball", "Bat", "Main", "PongGame");
+
   @TempDir Path tempDir;
 
   @ParameterizedTest(name = "{0}: official Jack-to-VM generation")
@@ -229,9 +231,124 @@ class OfficialVmGenerationTest {
         main.indexOf("call SquareGame.run 1\n") < main.indexOf("call SquareGame.dispose 1\n"));
   }
 
+  @Test
+  void pongCompilesAllFourOfficialClassesBesideSources() throws Exception {
+    Path sourceDirectory = Files.createDirectory(tempDir.resolve("Pong"));
+    writePongSources(sourceDirectory);
+
+    List<Path> expectedOutputs =
+        PONG_CLASSES.stream().map(name -> sourceDirectory.resolve(name + ".vm")).toList();
+
+    List<Path> generated = new CompileCommand().execute(sourceDirectory, Optional.empty());
+
+    assertEquals(expectedOutputs, generated);
+
+    for (String name : PONG_CLASSES) {
+      Path source = sourceDirectory.resolve(name + ".jack");
+      Path output = sourceDirectory.resolve(name + ".vm");
+
+      assertTrue(Files.isRegularFile(output));
+
+      String vm = Files.readString(output, StandardCharsets.UTF_8);
+      assertFalse(vm.isBlank());
+      assertTrue(vm.startsWith("function " + name + "."));
+      assertTrue(vm.endsWith("return\n"));
+      assertFalse(vm.contains("\r"));
+
+      assertArrayEquals(readOfficialSource("Pong", name + ".jack"), Files.readAllBytes(source));
+
+      assertFalse(Files.exists(sourceDirectory.resolve(name + "T.xml")));
+      assertFalse(Files.exists(sourceDirectory.resolve(name + "P.xml")));
+    }
+  }
+
+  @Test
+  void pongGeneratesObjectStaticMovementAndScoringInstructions() throws Exception {
+    Path sourceDirectory = Files.createDirectory(tempDir.resolve("Pong"));
+    writePongSources(sourceDirectory);
+
+    Path outputDirectory = tempDir.resolve("generated-pong");
+
+    List<Path> expectedOutputs =
+        PONG_CLASSES.stream().map(name -> outputDirectory.resolve(name + ".vm")).toList();
+
+    List<Path> generated =
+        new CompileCommand().execute(sourceDirectory, Optional.of(outputDirectory));
+
+    assertEquals(expectedOutputs, generated);
+
+    for (String name : PONG_CLASSES) {
+      assertTrue(Files.isRegularFile(outputDirectory.resolve(name + ".vm")));
+      assertFalse(Files.exists(sourceDirectory.resolve(name + ".vm")));
+      assertArrayEquals(
+          readOfficialSource("Pong", name + ".jack"),
+          Files.readAllBytes(sourceDirectory.resolve(name + ".jack")));
+    }
+
+    String main = Files.readString(outputDirectory.resolve("Main.vm"), StandardCharsets.UTF_8);
+    String ball = Files.readString(outputDirectory.resolve("Ball.vm"), StandardCharsets.UTF_8);
+    String bat = Files.readString(outputDirectory.resolve("Bat.vm"), StandardCharsets.UTF_8);
+    String game = Files.readString(outputDirectory.resolve("PongGame.vm"), StandardCharsets.UTF_8);
+
+    assertTrue(main.contains("function Main.main 1\n"));
+    assertTrue(main.contains("call PongGame.newInstance 0\n"));
+    assertTrue(main.contains("call PongGame.getInstance 0\n"));
+    assertTrue(main.contains("call PongGame.run 1\n"));
+    assertTrue(main.contains("call PongGame.dispose 1\n"));
+
+    assertTrue(ball.contains("function Ball.new 0\n"));
+    assertTrue(ball.contains("call Memory.alloc 1\n"));
+    assertTrue(ball.contains("pop pointer 0\n"));
+    assertTrue(ball.contains("function Ball.setDestination 3\n"));
+    assertTrue(ball.contains("function Ball.move 0\n"));
+    assertTrue(ball.contains("function Ball.bounce 5\n"));
+    assertTrue(ball.contains("call Math.abs 1\n"));
+    assertTrue(ball.contains("call Math.divide 2\n"));
+    assertTrue(ball.contains("call Screen.drawRectangle 4\n"));
+
+    assertTrue(bat.contains("function Bat.new 0\n"));
+    assertTrue(bat.contains("call Memory.alloc 1\n"));
+    assertTrue(bat.contains("function Bat.setDirection 0\n"));
+    assertTrue(bat.contains("function Bat.setWidth 0\n"));
+    assertTrue(bat.contains("function Bat.move 0\n"));
+    assertTrue(bat.contains("call Screen.drawRectangle 4\n"));
+
+    assertTrue(game.contains("function PongGame.new 0\n"));
+    assertTrue(game.contains("call Bat.new 4\n"));
+    assertTrue(game.contains("call Ball.new 6\n"));
+    assertTrue(game.contains("call Ball.setDestination 3\n"));
+    assertTrue(game.contains("function PongGame.newInstance 0\n"));
+    assertTrue(game.contains("function PongGame.getInstance 0\n"));
+    assertTrue(game.contains("pop static 0\n"));
+    assertTrue(game.contains("push static 0\n"));
+    assertTrue(game.contains("function PongGame.run 1\n"));
+    assertTrue(game.contains("function PongGame.moveBall 5\n"));
+    assertTrue(game.contains("call Keyboard.keyPressed 0\n"));
+    assertTrue(game.contains("call PongGame.moveBall 1\n"));
+    assertTrue(game.contains("call Ball.move 1\n"));
+    assertTrue(game.contains("call Ball.bounce 2\n"));
+    assertTrue(game.contains("call Bat.setDirection 2\n"));
+    assertTrue(game.contains("call Bat.setWidth 2\n"));
+    assertTrue(game.contains("call Output.printInt 1\n"));
+    assertTrue(game.contains("call Sys.wait 1\n"));
+
+    assertTrue(
+        main.indexOf("call PongGame.newInstance 0\n")
+            < main.indexOf("call PongGame.getInstance 0\n"));
+    assertTrue(
+        main.indexOf("call PongGame.getInstance 0\n") < main.indexOf("call PongGame.run 1\n"));
+    assertTrue(main.indexOf("call PongGame.run 1\n") < main.indexOf("call PongGame.dispose 1\n"));
+  }
+
   private void writeSquareSources(Path directory) throws IOException {
     for (String name : SQUARE_CLASSES) {
       Files.write(directory.resolve(name + ".jack"), readOfficialSource("Square", name + ".jack"));
+    }
+  }
+
+  private void writePongSources(Path directory) throws IOException {
+    for (String name : PONG_CLASSES) {
+      Files.write(directory.resolve(name + ".jack"), readOfficialSource("Pong", name + ".jack"));
     }
   }
 
