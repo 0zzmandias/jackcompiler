@@ -589,6 +589,7 @@ O repositório contém o código das três partes do JackCompiler e preserva as 
 |---|---|
 | [`v1.0.0-lexer`](https://github.com/0zzmandias/jackcompiler/tree/v1.0.0-lexer) | Analisador léxico |
 | [`v2.0.0-parser`](https://github.com/0zzmandias/jackcompiler/tree/v2.0.0-parser) | Analisador sintático |
+| [`v3.0.0-vm`](https://github.com/0zzmandias/jackcompiler/tree/v3.0.0-vm) | Gerador de código intermediário VM |
 
 O histórico Git permite identificar as alterações dos componentes e consultar as versões anteriores do projeto.
 
