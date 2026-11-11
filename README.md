@@ -3,10 +3,13 @@
 
 Projeto acadêmico da disciplina de Compiladores, desenvolvido em **Java 21** para a linguagem Jack, utilizada no curso [nand2tetris](https://www.nand2tetris.org/).
 
-O JackCompiler reúne, em um único projeto, os dois componentes desenvolvidos na Unidade 1:
+O JackCompiler integra três componentes em um único projeto:
 
-- **Analisador léxico (`tokenize`):** lê código-fonte Jack, reconhece e classifica os tokens, descarta espaços e comentários e gera XML no formato oficial do nand2tetris.
-- **Analisador sintático (`parse`):** reutiliza o analisador léxico, reconhece a gramática Jack por *recursive descent parsing* e produz a árvore sintática em XML, compatível com as referências oficiais.
+- **Analisador léxico (`tokenize`):** reconhece os tokens Jack e produz XML no formato oficial.
+- **Analisador sintático (`parse`):** reutiliza o scanner, reconhece a gramática por análise descendente recursiva e produz uma árvore sintática em XML.
+- **Compilador Jack → VM (`compile`):** reutiliza scanner e parser, constrói a representação semântica necessária e gera instruções da máquina virtual Hack, compatíveis com o Project 11.
+
+Os componentes foram desenvolvidos progressivamente no mesmo repositório, preservando os contratos das entregas anteriores.
 
 **Repositório:** [github.com/0zzmandias/jackcompiler](https://github.com/0zzmandias/jackcompiler)
 
@@ -15,10 +18,11 @@ O JackCompiler reúne, em um único projeto, os dois componentes desenvolvidos n
 **Helton Alves Sá**  
 Matrícula: 20260009631
 
-## Requisitos e construção
+## 1. Requisitos e construção
 
-- **JDK 21**;
-- **Apache Maven**.
+- JDK 21;
+- Apache Maven;
+- Sistema operacional com suporte à execução de aplicações Java.
 
 Na raiz do repositório:
 
@@ -36,25 +40,45 @@ O executável é gerado em:
 target/jackcompiler.jar
 ```
 
-Caso a verificação de formatação falhe, utilize:
+Caso a verificação de formatação falhe:
 
 ```bash
 mvn spotless:apply
 mvn clean verify
 ```
 
-A construção usa Maven Surefire e Failsafe, JUnit Jupiter e Spotless com Google Java Format. A integração contínua, implementada no GitHub Actions, executa `mvn clean verify` com Java 21 (Temurin).
+O projeto utiliza Maven Surefire, Failsafe, JUnit Jupiter e Spotless com Google Java Format.
 
-## Como executar
+O repositório também possui um workflow GitHub Actions configurado para Java 21. Sua execução encontra-se condicionada à resolução de um bloqueio administrativo de cobrança na plataforma GitHub, que impediu a inicialização dos jobs durante a Parte 3. Essa restrição externa não impediu a validação local do projeto.
 
-A aplicação disponibiliza dois subcomandos, `tokenize` e `parse`, e uma opção de ajuda:
+## 2. Como executar
+
+A aplicação disponibiliza três subcomandos e uma opção de ajuda:
 
 ```bash
 java -jar target/jackcompiler.jar --help
 
 java -jar target/jackcompiler.jar tokenize Main.jack
 java -jar target/jackcompiler.jar parse Main.jack
+java -jar target/jackcompiler.jar compile Main.jack
+```
 
+Sintaxe:
+
+```text
+jackcompiler tokenize <file.jack|directory> [--output-dir <directory>]
+jackcompiler parse <file.jack|directory> [--output-dir <directory>]
+jackcompiler compile <file.jack|directory> [--output-dir <directory>]
+jackcompiler --help
+```
+
+Os três comandos também aceitam diretórios. A interpretação da entrada e os destinos diferem conforme a operação.
+
+### 2.1. Tokenização e análise sintática
+
+Exemplos:
+
+```bash
 java -jar target/jackcompiler.jar tokenize projetos/Square
 java -jar target/jackcompiler.jar parse projetos/Square
 
@@ -62,44 +86,103 @@ java -jar target/jackcompiler.jar tokenize Main.jack --output-dir resultados/tok
 java -jar target/jackcompiler.jar parse Main.jack --output-dir resultados/parser
 ```
 
-A sintaxe dos comandos é:
+Para `tokenize` e `parse`, a descoberta de fontes em diretórios **não é recursiva**. Somente arquivos regulares `.jack` diretamente contidos no diretório são selecionados, em ordem alfabética.
 
-```text
-jackcompiler tokenize <file.jack|directory> [--output-dir <directory>]
-jackcompiler parse <file.jack|directory> [--output-dir <directory>]
-jackcompiler --help
+A extensão diferencia maiúsculas de minúsculas.
+
+### 2.2. Compilação Jack para VM
+
+Para compilar um arquivo:
+
+```bash
+java -jar target/jackcompiler.jar compile Main.jack
 ```
 
-Cada comando recebe um arquivo `.jack` ou um diretório. Quando a entrada é um diretório, apenas os arquivos regulares com extensão `.jack` diretamente contidos nele são selecionados, em ordem alfabética. A busca não é recursiva e a extensão diferencia maiúsculas de minúsculas.
+Por padrão, o arquivo `Main.vm` será gerado ao lado de `Main.jack`, desde que o destino seja permitido.
 
-### Arquivos gerados
+Para compilar um diretório:
 
-| Comando | Exemplo de saída | Diretório padrão |
+```bash
+java -jar target/jackcompiler.jar compile projetos/Square
+```
+
+O comando `compile` procura arquivos `.jack` **recursivamente** e os processa em ordem determinística de caminho relativo.
+
+Para utilizar um diretório de saída específico:
+
+```bash
+java -jar target/jackcompiler.jar compile projetos/Square \
+  --output-dir resultados/vm/Square
+```
+
+Cada fonte gera um arquivo VM correspondente, preservando o nome-base.
+
+Se o diretório de entrada possuir subdiretórios, seus caminhos relativos serão reproduzidos no diretório de saída personalizado.
+
+O comando não percorre links simbólicos de diretórios. Diretórios sem arquivos Jack elegíveis e entradas inválidas produzem erro.
+
+### 2.3. Arquivos gerados
+
+| Comando | Saída | Destino padrão |
 |---|---|---|
-| `tokenize` | `MainT.xml` | `target/generated-tokens/` |
-| `parse` | `MainP.xml` | `target/generated-parser/` |
+| `tokenize` | `NomeT.xml` | `target/generated-tokens/` |
+| `parse` | `NomeP.xml` | `target/generated-parser/` |
+| `compile` | `Nome.vm` | Diretório do arquivo `.jack` |
 
-Os diretórios padrão são relativos ao diretório de trabalho no qual o comando é executado. A opção `--output-dir` permite escolher outro destino.
+Os diretórios padrão de XML são relativos ao diretório de trabalho de execução.
 
-**Política de escrita:** nos diretórios padrão, um arquivo XML regular preexistente com o mesmo nome pode ser substituído. Em um diretório personalizado, a colisão provoca erro e o arquivo existente não é sobrescrito. O conteúdo é preparado antes da publicação, que utiliza um arquivo temporário e tenta movimentação atômica quando suportada pelo sistema de arquivos.
+A opção `--output-dir` permite utilizar um destino personalizado. Na compilação de diretórios, ela também preserva a estrutura relativa das fontes.
 
-Os arquivos-fonte não são modificados. A implementação também verifica aliases da fonte, links simbólicos nos caminhos de saída e destinos protegidos, incluindo diretórios de código e de recursos de teste.
+### 2.4. Proteção de arquivos e processamento em lote
 
-Em entradas com múltiplos arquivos, o processamento é **fail-fast**: interrompe na primeira falha, preserva as saídas já concluídas e não processa os arquivos restantes. Não há rollback do lote inteiro.
+Os arquivos-fonte não são modificados pelo processamento.
 
-### Códigos de saída e erros
+A publicação utiliza `TextFileWriter`, com UTF-8, arquivo temporário e verificações contra destinos inseguros, incluindo caminhos simbólicos e diretórios protegidos de código e recursos de teste.
+
+As políticas de colisão são:
+
+- **Destino padrão:** permite substituir um arquivo de saída regular preexistente.
+- **Destino personalizado:** rejeita colisões, sem sobrescrever o arquivo existente.
+
+O conteúdo de cada saída é preparado antes de sua publicação.
+
+O processamento em lote é **sequencial e fail-fast**: a primeira falha interrompe o processamento. Saídas já publicadas permanecem; os arquivos seguintes não são processados. Não existe rollback global.
+
+Para compilar exemplos oficiais versionados em `src/test/resources`, utilize um diretório de saída personalizado, preferencialmente dentro de `target/`, preservando os recursos de teste.
+
+### 2.5. Códigos de saída e diagnósticos
 
 | Código | Significado |
 |---|---|
-| `0` | Execução bem-sucedida ou exibição da ajuda |
-| `1` | Erro de leitura, análise, serialização ou escrita |
+| `0` | Sucesso ou exibição da ajuda |
+| `1` | Falha de processamento |
 | `2` | Argumentos inválidos |
 
-A ajuda e os resultados são escritos em `stdout`; as mensagens de erro, em `stderr`. Erros léxicos e sintáticos identificam o arquivo e a posição original (**linha e coluna**). A leitura de fontes utiliza UTF-8 estrito e rejeita sequências inválidas.
+A ajuda e os caminhos dos arquivos gerados são apresentados em `stdout`. Erros são apresentados em `stderr`.
 
-## Exemplo de tokenização
+Os diagnósticos distinguem falhas léxicas, sintáticas, de compilação e de entrada/saída. Quando há uma posição original disponível, o diagnóstico informa linha e coluna.
 
-Considere o arquivo `Main.jack`:
+A leitura utiliza UTF-8 estrito, rejeitando sequências inválidas.
+
+## 3. Analisador léxico — Parte 1
+
+O scanner reconhece as cinco categorias oficiais de Jack:
+
+- `keyword`;
+- `symbol`;
+- `integerConstant`;
+- `stringConstant`;
+- `identifier`.
+
+São implementadas as 21 palavras reservadas, os 19 símbolos oficiais, constantes inteiras de 0 a 32767, identificadores, strings e o descarte de espaços e comentários `//`, `/* ... */` e `/** ... */`.
+
+**Símbolos:** `{ } ( ) [ ] . , ; + - * / & | < > = ~`.
+
+O scanner preserva os valores e as posições originais dos tokens. A serialização XML utiliza UTF-8, terminadores LF e escape dos caracteres reservados.
+
+### 3.1. Exemplo de tokenização
+
+Para `Main.jack` contendo:
 
 ```jack
 class Main {}
@@ -111,7 +194,7 @@ Execute:
 java -jar target/jackcompiler.jar tokenize Main.jack
 ```
 
-O arquivo `MainT.xml` terá o seguinte conteúdo:
+O arquivo `MainT.xml` conterá:
 
 ```xml
 <tokens>
@@ -122,21 +205,23 @@ O arquivo `MainT.xml` terá o seguinte conteúdo:
 </tokens>
 ```
 
-O analisador reconhece as cinco categorias oficiais: `keyword`, `symbol`, `integerConstant`, `stringConstant` e `identifier`. São implementadas as 21 palavras reservadas e os 19 símbolos da linguagem, constantes inteiras de `0` a `32767`, identificadores e strings, além do descarte de espaços e comentários `//`, `/* ... */` e `/** ... */`.
+### 3.2. Símbolos `[` e `]`
 
-**Símbolos reconhecidos:** `{ } ( ) [ ] . , ; + - * / & | < > = ~`.
+O enunciado da Parte 1 omite `[` e `]` em sua lista de símbolos. Entretanto, ambos pertencem aos 19 símbolos oficiais de Jack e são necessários para indexação de arrays.
 
-Os valores dos tokens são preservados. A serialização utiliza UTF-8, terminadores de linha LF, os espaços convencionais dos XMLs oficiais e o escape de caracteres reservados de XML.
+A implementação desses símbolos segue a especificação oficial e não constitui extensão da linguagem.
 
-### Esclarecimento sobre os colchetes `[` e `]`
+## 4. Analisador sintático — Parte 2
 
-O item **“Reconhecimento de Tokens”** do enunciado da Parte 1 apresenta uma lista de símbolos que omite `[` e `]`. Entretanto, ambos pertencem aos **19 símbolos oficiais de Jack** e são necessários, por exemplo, para acessar arrays (`a[i]`).
+O parser reconhece declarações de classes, campos, estáticas, variáveis, funções, métodos, construtores, parâmetros, expressões e os comandos `let`, `if`, `while`, `do` e `return`.
 
-Por isso, os dois símbolos foram implementados deliberadamente. Essa escolha segue a especificação da linguagem e permite analisar os programas oficiais que utilizam arrays, como `ArrayTest`. **Não constitui uma extensão da linguagem.**
+Também reconhece acesso indexado a arrays e chamadas de sub-rotinas.
 
-## Exemplo de análise sintática
+O parser utiliza análise descendente recursiva diretamente sobre o `TokenizationResult` produzido pelo scanner.
 
-Para o mesmo arquivo `Main.jack`, execute:
+### 4.1. Exemplo de análise sintática
+
+Para o mesmo `Main.jack`:
 
 ```bash
 java -jar target/jackcompiler.jar parse Main.jack
@@ -153,73 +238,247 @@ O arquivo `MainP.xml` conterá:
 </class>
 ```
 
-O parser reconhece declarações de classes, variáveis e sub-rotinas; parâmetros; comandos `let`, `if`, `while`, `do` e `return`; expressões, termos, acesso a arrays e chamadas de sub-rotinas. Utiliza análise descendente recursiva sobre os tokens produzidos pelo scanner, preservando seus lexemas e posições.
+### 4.2. Precedência e associatividade
 
-### Precedência e associatividade dos operadores
+A gramática oficial define:
 
-O enunciado da Parte 2 menciona o tratamento de precedência e associatividade. A linguagem Jack, porém, **não estabelece uma prioridade obrigatória entre operadores binários**: a gramática oficial define a expressão como `term (op term)*`. O agrupamento explícito por parênteses deve ser respeitado.
+```text
+expression ::= term (op term)*
+```
 
-Por exemplo, a expressão `2 + 3 * 4`, sem parênteses, não possui uma interpretação aritmética única imposta pela especificação de Jack. O parser deste projeto reconhece os termos e operadores em sua sequência original, sem introduzir uma precedência convencional de outras linguagens. Expressões entre parênteses geram estruturas sintáticas aninhadas.
+Jack não impõe uma tabela obrigatória de precedência para operadores binários.
 
-Essa decisão segue o objetivo da análise sintática: produzir uma representação fiel à gramática e aos XMLs oficiais, **sem avaliar as operações aritméticas**. A especificação de Jack permite que implementações definam políticas próprias de precedência, mas não exige uma política específica para esta representação XML.
+Assim, `2 + 3 * 4` é reconhecida como sequência de termos e operadores. Os parênteses explícitos são preservados como agrupamentos aninhados.
 
-Referência: Nisan e Schocken, [*The Elements of Computing Systems*](https://www.nand2tetris.org/book), capítulo 9, seção **“Operator Priority and Order of Evaluation”**.
+O parser não introduz uma precedência convencional alheia à gramática. A etapa de compilação avalia as operações segundo a sequência sintática representada pela árvore.
 
-### Tags XML e produções auxiliares
+Essa decisão mantém a compatibilidade com a representação oficial do nand2tetris.
 
-O enunciado também menciona que os não-terminais da gramática devem aparecer como elementos XML. Para satisfazer o critério de **equivalência estrutural com os arquivos oficiais**, o JackCompiler segue a hierarquia XML especificada no [Project 10 do nand2tetris](https://www.nand2tetris.org/project10).
+Referência: Nisan e Schocken, *The Elements of Computing Systems*, capítulo 9, seção "Operator Priority and Order of Evaluation".
 
-Assim, produções auxiliares como `op`, `unaryOp`, `keywordConstant`, `statement` e `subroutineCall` são reconhecidas pelo parser, mas **não introduzem tags XML intermediárias próprias**. Por exemplo, um operador aparece como `<symbol>` dentro de `<expression>`, e um comando `let` aparece como `<letStatement>` dentro de `<statements>`, sem um wrapper `<statement>`.
+### 4.3. Tags XML e produções auxiliares
 
-A distinção entre os métodos que reconhecem as produções gramaticais e os elementos efetivamente serializados é descrita em [docs/architecture.md](docs/architecture.md).
+O formato do Project 10 utiliza 15 categorias de elementos gramaticais.
 
-## Arquitetura do projeto
+Produções auxiliares como `op`, `unaryOp`, `keywordConstant`, `statement` e `subroutineCall` são reconhecidas, mas não necessariamente serializadas como elementos XML próprios.
 
-O parser amplia a arquitetura do analisador léxico, reutilizando seus contratos e os serviços compartilhados de entrada e saída.
+Um operador, por exemplo, aparece como `<symbol>` dentro de `<expression>`, sem introduzir uma tag `<op>`.
+
+Essa decisão preserva a equivalência estrutural com os XMLs oficiais.
+
+## 5. Compilador Jack → VM — Parte 3
+
+O compilador utiliza diretamente a árvore sintática concreta (CST), sem gerar ou interpretar XML intermediário.
+
+O fluxo é:
+
+```text
+Fonte Jack (.jack)
+    ↓
+JackSourceReader
+    ↓
+JackTokenizer
+    ↓
+TokenizationResult
+    ↓
+JackParser
+    ↓
+GrammarNode
+    ↓
+JackVmCompiler
+    ↓
+Instruções VM
+    ↓
+TextFileWriter
+    ↓
+Arquivo .vm
+```
+
+### 5.1. Tabela de símbolos
+
+As declarações são organizadas em quatro categorias:
+
+| Categoria Jack | Segmento VM |
+|---|---|
+| `static` | `static` |
+| `field` | `this` |
+| `argument` | `argument` |
+| `var` | `local` |
+
+A tabela mantém escopos de classe e sub-rotina, com índices independentes por categoria.
+
+Cada sub-rotina recebe um novo escopo. Nos métodos, `argument 0` é reservado à referência do objeto receptor.
+
+A resolução procura primeiro a sub-rotina e depois a classe.
+
+### 5.2. Sub-rotinas e objetos
+
+O compilador gera:
+
+- `function Classe.rotina nLocals`;
+- inicialização de `this` para métodos;
+- alocação de objetos com `Memory.alloc` para construtores;
+- passagem do receptor em chamadas de métodos;
+- argumentos explícitos em chamadas de funções e construtores;
+- retorno de valores e retorno `void` com valor convencional zero.
+
+Chamadas a bibliotecas externas, como o Jack OS, são permitidas sem exigir que suas fontes estejam presentes no mesmo diretório.
+
+### 5.3. Expressões, arrays e comandos
+
+A geração contempla constantes, variáveis, strings, operações aritméticas e lógicas, chamadas de sub-rotinas e expressões aninhadas.
+
+Multiplicação e divisão utilizam `Math.multiply` e `Math.divide`. Strings utilizam `String.new` e `String.appendChar`.
+
+Arrays são traduzidos mediante cálculo de endereço e uso de `pointer 1` e `that 0`.
+
+Os comandos `let`, `do`, `return`, `if`, `if-else` e `while` são traduzidos para instruções da VM, com rótulos de controle de fluxo.
+
+O comando `do` descarta o valor retornado pela chamada.
+
+### 5.4. Limites semânticos
+
+O compilador verifica inconsistências identificáveis a partir da classe e de suas declarações, incluindo símbolos não resolvidos, duplicações e usos incompatíveis com o contexto da sub-rotina.
+
+Não implementa inferência global de tipos, otimização de código VM ou análise interclasses completa.
+
+As dependências externas conhecidas pelo código Jack podem ser referenciadas sem validação integral de suas implementações.
+
+## 6. Arquitetura do projeto
+
+O código de produção está organizado em onze pacotes:
 
 ```text
 src/main/java/jackcompiler/
-├── application/  # Casos de uso tokenize e parse
-├── cli/          # Argumentos, comandos, ajuda e diagnósticos
-├── io/           # Descoberta, leitura e publicação dos arquivos
-├── lexer/        # Análise léxica
-├── parser/       # Análise sintática descendente recursiva
-├── syntax/       # Árvore sintática concreta e imutável
-├── token/        # Tipos, tokens e posições
-└── xml/          # Serialização de tokens e da árvore sintática
+├── application/  # tokenize, parse e compile
+├── cli/          # argumentos, comandos e diagnósticos
+├── compiler/     # tradução da CST em instruções VM
+├── io/           # descoberta, leitura, destinos e publicação
+├── lexer/        # reconhecimento léxico
+├── parser/       # análise sintática descendente recursiva
+├── symbol/       # símbolos e escopos
+├── syntax/       # árvore sintática concreta imutável
+├── token/        # tipos, valores e posições
+├── vm/           # emissão das instruções VM
+└── xml/          # serialização XML
 ```
 
-O fluxo do comando `parse` é:
+A arquitetura conserva a independência do scanner e do parser.
+
+`TokenizeCommand`, `ParseCommand` e `CompileCommand` são casos de uso separados que reutilizam os componentes necessários.
+
+A fachada `JackVmCompiler` recebe um `GrammarNode` e retorna texto VM. Ela não depende da CLI, do sistema de arquivos ou da serialização XML.
+
+Os contratos e as dependências são detalhados em [docs/architecture.md](docs/architecture.md).
+
+## 7. Testes e validação oficial
+
+O projeto utiliza testes unitários, de integração, do JAR executável, de contratos públicos e de aceitação oficial.
+
+### 7.1. Compatibilidade das Partes 1 e 2
+
+Os testes preservam a compatibilidade com os programas oficiais:
+
+- `Square`;
+- `ExpressionLessSquare`;
+- `ArrayTest`.
+
+Os XMLs léxicos são comparados com referências `*T.xml`. Os XMLs sintáticos são comparados estruturalmente com referências oficiais `*.xml`, preservando hierarquia, ordem e conteúdo significativo dos terminais.
+
+### 7.2. Aceitação da Parte 3
+
+A geração VM foi testada com os seis programas oficiais do Project 11:
+
+| Programa | Fontes Jack | Resultado observado no VM Emulator |
+|---|---:|---|
+| Seven | 1 | Impressão do valor 7 |
+| Average | 1 | Entradas 4, 6 e 8; média 6 |
+| ConvertToBin | 1 | Representação correta de 13 em 16 bits |
+| ComplexArrays | 1 | Resultados 5, 40, 0, 77 e 110 |
+| Square | 3 | Desenho, movimentação, tamanho e saída |
+| Pong | 4 | Jogo, controles, colisões, placar e Game Over |
+
+Os seis programas foram compilados pelo JackCompiler e executados manualmente no Virtual Machine Emulator 2.5.
+
+Os testes automatizados de aceitação verificam a geração VM, mas não simulam a execução do emulador.
+
+Os materiais oficiais provêm de [nand2tetris/projects](https://github.com/nand2tetris/projects), revisão:
 
 ```text
-.jack → leitura → JackTokenizer → TokenizationResult
-      → JackParser → GrammarNode → ParseTreeXmlWriter → *P.xml
+6097b770073025891fb8b7a22aa3b72f61f81277
 ```
 
-`TokenizeCommand` e `ParseCommand` são casos de uso distintos. Ambos reutilizam os componentes necessários, sem duplicar o scanner e sem depender da interface de linha de comando para executar a análise.
+A licença MIT correspondente está preservada em `src/test/resources/nand2tetris/LICENSE`.
 
-Veja os contratos, as dependências e as decisões de organização em [docs/architecture.md](docs/architecture.md).
+### 7.3. Resultados automatizados
 
-## Testes e validação oficial
+A execução local de `mvn clean verify` em 10/11/2026, antes do fechamento documental, apresentou:
 
-O projeto utiliza testes unitários, testes de integração, testes do JAR executável e testes de aceitação baseados nos programas oficiais do nand2tetris.
+| Verificação | Resultado |
+|---|---|
+| Spotless | Aprovado |
+| Surefire | 1.799 testes aprovados |
+| Failsafe | 64 testes aprovados |
+| **Total** | **1.863 testes aprovados** |
+| Falhas e erros | 0 |
+| Maven | `BUILD SUCCESS` |
 
-A validação abrange os programas `Main`, `Square` e `SquareGame` dos conjuntos `Square` e `ExpressionLessSquare`, além de `ArrayTest/Main`. Os XMLs de tokens são comparados com as referências `*T.xml`; os XMLs sintáticos são comparados estruturalmente com as referências oficiais `*.xml`, preservando hierarquia, ordem e conteúdo significativo dos terminais.
+Os resultados correspondem ao estado funcional do P3-24, commit [`0d389be`](https://github.com/0zzmandias/jackcompiler/commit/0d389be81a2876ca7ac804085b49493104a96886).
 
-Na validação do commit [`ea89741`](https://github.com/0zzmandias/jackcompiler/commit/ea89741d1bde0ce5652766c6a5c148007ad1941b), foram aprovados **1.149 testes**, sendo **1.101 pelo Surefire e 48 pelo Failsafe**, sem falhas. O [GitHub Actions](https://github.com/0zzmandias/jackcompiler/actions/runs/40446352404) também concluiu a construção com sucesso.
+### 7.4. Integração contínua
 
-As referências oficiais foram obtidas de [nand2tetris/projects](https://github.com/nand2tetris/projects), na revisão `6097b770073025891fb8b7a22aa3b72f61f81277`. A licença correspondente está preservada em `src/test/resources/nand2tetris/LICENSE`.
+O repositório possui um workflow GitHub Actions com Java 21 e Maven.
 
-A estratégia de verificação, os critérios de comparação, os casos cobertos e as evidências estão detalhados em [docs/testing.md](docs/testing.md). A correspondência entre requisitos e testes encontra-se em [docs/acceptance.md](docs/acceptance.md).
+Durante a Parte 3, o início dos jobs foi impedido por um bloqueio administrativo de cobrança da conta GitHub (*billing lock*). A situação foi encaminhada ao suporte da plataforma.
 
-## Desafios de implementação
+Esse bloqueio ocorre antes da execução dos testes e não constitui evidência de falha no código Java. A validação local foi realizada e aprovada independentemente dessa restrição.
 
-O principal desafio da evolução do JackCompiler foi integrar a análise sintática **sem reimplementar nem comprometer o scanner da Parte 1**. Para isso, o parser recebe diretamente o `TokenizationResult` e utiliza um cursor próprio, enquanto a leitura de arquivos, a publicação das saídas e a serialização permanecem em componentes com responsabilidades separadas.
+A execução da integração contínua sobre o snapshot final permanece pendente até que o serviço esteja disponível.
 
-Outro desafio foi conciliar o reconhecimento de todas as produções da gramática com o **formato XML específico do nand2tetris**. A implementação mantém métodos responsáveis pelas regras gramaticais, mas só serializa os elementos previstos nas referências oficiais, inclusive quando uma produção auxiliar não corresponde a uma tag própria. Os testes verificam também erros posicionados, expressões aninhadas e a preservação de espaços significativos em strings.
+A estratégia de testes está em [docs/testing.md](docs/testing.md) e a matriz de requisitos está em [docs/acceptance.md](docs/acceptance.md).
 
-## Marcos do repositório
+## 8. Desafios de implementação
 
-O desenvolvimento das duas partes utiliza o mesmo histórico Git. A versão do analisador léxico está identificada pela tag [`v1.0.0-lexer`](https://github.com/0zzmandias/jackcompiler/tree/v1.0.0-lexer), enquanto a evolução sintática permanece na mesma base de código.
+A evolução do JackCompiler exigiu preservar as duas entregas anteriores e acrescentar geração de código sem introduzir uma segunda análise léxica ou sintática.
 
-O código, os testes e os recursos oficiais estão disponíveis neste repositório sob seus respectivos diretórios `src/main/` e `src/test/`.
+Os principais desafios foram:
+
+- **Reutilização da CST:** interpretar a árvore existente sem convertê-la em XML nem duplicar o parser.
+- **Escopos e objetos:** mapear variáveis para segmentos VM, reservar o receptor de métodos e alocar construtores corretamente.
+- **Chamadas de sub-rotinas:** distinguir funções, construtores e métodos, inclusive declarações posteriores na mesma classe.
+- **Arrays:** calcular endereços indiretos e preservar os valores durante leituras e atribuições.
+- **Fluxo de controle:** gerar rótulos determinísticos em estruturas condicionais e laços aninhados.
+- **Proteção das fontes:** implementar descoberta recursiva e novos destinos sem alterar o comportamento dos comandos antigos.
+- **Aceitação comportamental:** validar programas oficiais reais no VM Emulator, além da geração textual de instruções.
+
+As decisões detalhadas encontram-se em [docs/architecture.md](docs/architecture.md).
+
+## 9. Marcos Git
+
+As entregas compartilham o mesmo histórico Git.
+
+| Entrega | Referência | Situação |
+|---|---|---|
+| Parte 1 — Lexer | [`v1.0.0-lexer`](https://github.com/0zzmandias/jackcompiler/tree/v1.0.0-lexer) | Concluída |
+| Parte 2 — Parser | [`v2.0.0-parser`](https://github.com/0zzmandias/jackcompiler/tree/v2.0.0-parser) | Concluída |
+| Parte 3 — VM | Commit funcional [`0d389be`](https://github.com/0zzmandias/jackcompiler/commit/0d389be81a2876ca7ac804085b49493104a96886) | Incrementos P3-01 a P3-24 concluídos |
+
+A tag `v3.0.0-vm` será criada somente depois do fechamento documental, da auditoria final e da aprovação do snapshot correspondente.
+
+## 10. Uso de Inteligência Artificial
+
+Foi utilizado o **ChatGPT-6, da OpenAI**, como ferramenta de apoio ao desenvolvimento do projeto.
+
+O apoio recebido incluiu:
+
+- esclarecimento de especificações e decisões arquiteturais;
+- planejamento incremental e organização de responsabilidades;
+- elaboração e revisão de propostas de código e testes;
+- análise de resultados de compilação e logs;
+- investigação de defeitos e avaliação de correções;
+- orientação dos testes oficiais no VM Emulator;
+- estruturação e revisão da documentação técnica.
+
+A utilização de IA não substituiu a validação do projeto. O desenvolvedor executou os comandos no ambiente local, realizou os testes automatizados, verificou o funcionamento dos programas oficiais e revisou os incrementos antes de seus commits.
+
+A responsabilidade pela compreensão, integração, validação e entrega do projeto permanece com o autor identificado neste README.

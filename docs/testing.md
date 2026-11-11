@@ -1,435 +1,577 @@
 
 # Testes e validação do JackCompiler
 
-Este documento descreve a estratégia de testes, os materiais de referência, os critérios de comparação e as evidências de validação dos analisadores léxico e sintático do JackCompiler.
+Este documento descreve a estratégia de testes, os procedimentos de reprodução, os materiais oficiais e as evidências observadas nas três partes do JackCompiler.
 
-As duas partes são verificadas conjuntamente para assegurar que a integração do parser preserve os contratos e os comportamentos estabelecidos para o scanner.
+A validação combina testes automatizados em Java, execução do JAR empacotado e execução manual dos programas oficiais do Project 11 no Virtual Machine Emulator.
 
 ## 1. Ambiente de testes
 
-O projeto utiliza **Java 21**, **Apache Maven** e **JUnit 5 (Jupiter)**.
+O projeto utiliza:
 
-As principais ferramentas de construção e validação são:
+| Componente | Versão ou ferramenta |
+|---|---|
+| Linguagem de implementação | Java 21 |
+| Construção | Apache Maven |
+| Testes | JUnit Jupiter 5.11.4 |
+| Testes unitários | Maven Surefire 3.5.2 |
+| Testes de integração | Maven Failsafe 3.5.2 |
+| Formatação | Spotless 2.43.0 |
+| Formatador Java | Google Java Format 1.24.0 |
+| Emulador VM | Virtual Machine Emulator 2.5 |
+| Ambiente local utilizado | Debian 13 |
+| Integração contínua | GitHub Actions |
 
-| Componente | Versão | Responsabilidade |
-|---|---|---|
-| JDK | 21 | Compilação e execução |
-| JUnit Jupiter | 5.11.4 | Testes automatizados |
-| Maven Compiler Plugin | 3.14.0 | Compilação Java |
-| Maven Surefire Plugin | 3.5.2 | Execução dos testes unitários e de aceitação |
-| Maven Failsafe Plugin | 3.5.2 | Execução dos testes de integração do JAR |
-| Maven JAR Plugin | 3.4.2 | Empacotamento do executável |
-| Spotless | 2.43.0 | Verificação da formatação Java |
-| Google Java Format | 1.24.0 | Padronização da formatação |
+O emulador é uma ferramenta externa ao processo Maven. Sua execução não é simulada por `OfficialVmGenerationTest`.
 
-A configuração dessas ferramentas está definida em [`pom.xml`](../pom.xml).
+## 2. Execução da suíte automatizada
 
-A integração contínua utiliza GitHub Actions com JDK 21, distribuição Temurin, conforme [`.github/workflows/ci.yml`](../.github/workflows/ci.yml).
-
-## 2. Execução da suíte
-
-Na raiz do repositório, execute:
+Na raiz do repositório:
 
 ```bash
+java -version
+mvn -version
 mvn clean verify
 ```
 
-O comando executa as seguintes etapas:
+O Maven executa as etapas de formatação, compilação, testes unitários, empacotamento e testes de integração.
 
-1. **Limpeza:** remove os artefatos da construção anterior.
-2. **Formatação:** verifica o código Java com Spotless.
-3. **Compilação:** compila os arquivos de produção e de teste para Java 21.
-4. **Testes:** executa os testes pelo Surefire.
-5. **Empacotamento:** produz `target/jackcompiler.jar`.
-6. **Integração:** executa os testes do JAR empacotado pelo Failsafe.
-7. **Verificação:** confirma os resultados das etapas anteriores.
-
-Se o Spotless identificar problemas de formatação, execute:
+Se houver falha de formatação:
 
 ```bash
 mvn spotless:apply
 mvn clean verify
 ```
 
-O comando `spotless:apply` aplica a formatação configurada no projeto. A execução posterior de `clean verify` confirma que a construção completa permanece válida.
-
-### Relatórios produzidos
-
-Os relatórios podem ser consultados em:
-
-```text
-target/
-├── surefire-reports/
-├── failsafe-reports/
-└── jackcompiler.jar
-```
-
-Para verificar os relatórios e o manifesto do executável:
+A execução direcionada dos testes oficiais de geração VM utiliza:
 
 ```bash
-ls target/surefire-reports
-ls target/failsafe-reports
-
-grep -h "Tests run:" target/failsafe-reports/*.txt
-
-unzip -p target/jackcompiler.jar META-INF/MANIFEST.MF
+mvn '-Dtest=OfficialVmGenerationTest' test
 ```
 
-O manifesto do JAR identifica `jackcompiler.cli.JackCompiler` como classe principal.
+### 2.1. Relatórios produzidos
 
-Os testes Failsafe executam o JAR em processos Java independentes, após seu empacotamento. Essa verificação é diferente de invocar diretamente os métodos da aplicação durante os testes unitários.
+Os relatórios Surefire são gerados em:
+
+```text
+target/surefire-reports/
+```
+
+Os relatórios Failsafe são gerados em:
+
+```text
+target/failsafe-reports/
+```
+
+O JAR executável é gerado em:
+
+```text
+target/jackcompiler.jar
+```
+
+O comando `mvn clean verify` remove os artefatos antigos de `target/` antes de produzir os novos resultados.
+
+### 2.2. Critérios de aprovação
+
+Uma execução é aprovada quando:
+
+- a formatação Java é aceita;
+- o código compila;
+- os testes não apresentam falhas ou erros;
+- o JAR é gerado;
+- os testes de integração do executável passam;
+- o Maven termina com `BUILD SUCCESS`.
+
+A aprovação automatizada não substitui os testes comportamentais realizados no VM Emulator.
 
 ## 3. Estratégia de testes
 
-A suíte está distribuída por responsabilidades, com verificações específicas para os componentes e testes de integração entre eles.
+A validação está organizada em seis grupos complementares.
 
 ### 3.1. Analisador léxico
 
-| Área | Classes de teste | Verificações principais |
-|---|---|---|
-| Tokens e posições | `TokenTest`, `SourcePositionTest`, `TokenizationResultTest` | Validação dos dados, imutabilidade, posições e EOF |
-| Regras da linguagem | `JackLexicalRulesTest` | Palavras reservadas, símbolos, identificadores e limites |
-| Navegação na fonte | `SourceCursorTest` | Avanço, consulta, Unicode e quebras de linha |
-| Reconhecimento de tokens | `IdentifierRecognizerTest`, `IntegerRecognizerTest`, `StringRecognizerTest`, `SymbolRecognizerTest` | Categorias léxicas, lexemas e entradas inválidas |
-| Espaços e comentários | `WhitespaceConsumerTest`, `LineCommentConsumerTest`, `BlockCommentConsumerTest`, `TriviaSkipperTest` | Descarte de conteúdo não significativo e erros em comentários |
-| Scanner integrado | `JackTokenizerTest`, `LexicalExceptionTest` | Sequência de tokens, posições e diagnósticos |
-| Contrato público | `LexerPublicApiTest` | API reutilizável, encapsulamento e limites de dependência |
+Os testes da Parte 1 abrangem:
 
-Os testes verificam as cinco categorias de tokens, as 21 palavras reservadas e os 19 símbolos oficiais da linguagem Jack.
+- reconhecimento das cinco categorias de tokens;
+- palavras reservadas, símbolos e identificadores;
+- constantes inteiras e strings;
+- limites de valores;
+- comentários e espaços;
+- posições de origem;
+- erros léxicos;
+- preservação dos valores;
+- formato XML e escape de caracteres.
 
-Também são examinados os limites de constantes inteiras, as regras de identificadores, o conteúdo literal das strings e os formatos de comentário.
+Exemplos de classes:
 
-As posições são verificadas considerando linhas e colunas iniciadas em 1, incluindo os diferentes terminadores de linha e a navegação por pontos de código Unicode.
+```text
+JackTokenizerTest
+JackLexicalRulesTest
+StringRecognizerTest
+IntegerRecognizerTest
+IdentifierRecognizerTest
+SymbolRecognizerTest
+SourceCursorTest
+TokenXmlWriterTest
+```
 
-`LexerPublicApiTest` exercita o scanner a partir de um pacote externo e verifica propriedades de sua interface pública. A classe também identifica determinadas referências explícitas a dependências não permitidas no código de produção; não constitui, isoladamente, uma análise estática completa da arquitetura.
+`LexerPublicApiTest` verifica aspectos do contrato público e da separação de responsabilidades.
 
 ### 3.2. Analisador sintático
 
-| Área | Classes de teste | Verificações principais |
-|---|---|---|
-| Navegação por tokens | `TokenCursorTest` | Consulta, consumo, lookahead e EOF |
-| Estrutura das classes | `ClassStructureParserTest`, `ClassStructureParserDeclarationTest`, `ClassStructureParserSubroutineTest` | Classes, variáveis, parâmetros, sub-rotinas e tipos |
-| Expressões | `ExpressionParserTest`, `ExpressionParserRecursiveTermTest` | Termos, operadores, constantes, agrupamentos e recursão |
-| Arrays e argumentos | `ExpressionParserArrayAccessTest`, `ExpressionParserExpressionListTest` | Indexação e listas de expressões |
-| Chamadas de sub-rotinas | `ExpressionParserSubroutineCallTest` | Chamadas diretas, qualificadas e aninhadas |
-| Sequências e comandos | `StatementParserTest`, `StatementParserLetTest`, `StatementParserIfTest`, `StatementParserWhileTest`, `StatementParserDoTest`, `StatementParserReturnTest` | Cinco tipos de comando, combinações e aninhamento |
-| Integração do parser | `JackParserTest` | Reconhecimento de classes completas e rejeição de entradas inválidas |
-| Erros sintáticos | `SyntaxExceptionTest` | Elementos esperados, tokens encontrados e posições |
+Os testes da Parte 2 abrangem:
 
-Os testes do parser abrangem tanto construções válidas quanto violações da gramática Jack.
+- estrutura de classes;
+- declarações de variáveis;
+- funções, métodos e construtores;
+- parâmetros;
+- comandos `let`, `if`, `while`, `do` e `return`;
+- expressões e termos;
+- acesso a arrays;
+- chamadas de sub-rotinas;
+- agrupamentos por parênteses;
+- consumo integral dos tokens;
+- erros sintáticos posicionados.
 
-Entre as condições verificadas estão:
+As responsabilidades são distribuídas entre testes de:
 
-- reconhecimento das declarações e estruturas de uma classe;
-- comandos e expressões aninhados;
-- chamadas de sub-rotinas com e sem qualificador;
-- acesso a elementos de arrays;
-- expressões e listas de argumentos vazias quando permitidas;
-- operadores binários e unários;
-- preservação da sequência original dos termos e operadores;
-- agrupamentos explícitos por parênteses;
-- delimitadores ausentes, tokens inesperados e EOF prematuro;
-- rejeição de tokens adicionais após o fechamento de uma classe.
+```text
+JackParserTest
+ClassStructureParserTest
+StatementParserTest
+ExpressionParserTest
+TokenCursorTest
+SyntaxExceptionTest
+```
 
-Os testes de expressões verificam que o parser não introduz uma precedência binária artificial. Expressões entre parênteses são reconhecidas recursivamente e representadas por estruturas aninhadas.
-
-A análise sintática preserva os tokens e suas posições originais, permitindo que erros sejam relacionados ao ponto correspondente no arquivo-fonte.
+Os testes específicos de cada produção complementam essas classes principais.
 
 ### 3.3. Árvore sintática e XML
 
-| Área | Classes de teste | Verificações principais |
-|---|---|---|
-| Nós da árvore | `ParseNodeTest`, `GrammarNodeTest`, `TerminalNodeTest` | Representação e imutabilidade |
-| Categorias gramaticais | `SyntaxTagTest` | Elementos suportados pela árvore |
-| XML de tokens | `TokenXmlWriterTest` | Formatação de terminais e estrutura de tokens |
-| XML sintático | `ParseTreeXmlWriterTest` | Hierarquia, ordem, indentação e terminais |
-| Escape XML | `XmlEscaperTest` | Entidades XML e rejeição de caracteres inválidos |
+Os componentes da CST e de serialização são exercitados por:
 
-A árvore sintática utiliza `GrammarNode` para produções representadas como elementos estruturais e `TerminalNode` para os tokens originais.
+```text
+ParseNodeTest
+GrammarNodeTest
+TerminalNodeTest
+SyntaxTagTest
+ParseTreeXmlWriterTest
+XmlEscaperTest
+```
 
-Os testes verificam a preservação da ordem dos filhos e das informações dos terminais, assim como a serialização das 15 categorias gramaticais previstas no formato oficial.
+São verificados a imutabilidade, a ordem dos filhos, os terminais, a hierarquia e a representação XML oficial.
 
-Também são examinados o escape de caracteres reservados, o tratamento de caracteres incompatíveis com XML 1.0 e a preservação do conteúdo significativo de strings.
+### 3.4. Tabela de símbolos e geração VM
 
-### 3.4. Aplicação, arquivos e CLI
+Os testes da Parte 3 incluem:
 
-| Área | Classes de teste | Verificações principais |
-|---|---|---|
-| Descoberta de fontes | `JackFileResolverTest` | Arquivos, diretórios, seleção e ordenação |
-| Leitura | `JackSourceReaderTest` | UTF-8 estrito e preservação do conteúdo |
-| Resolução de destinos | `OutputPathResolverTest` | Sufixos, diretórios, colisões e aliases |
-| Escrita | `TextFileWriterTest` | Publicação, arquivos temporários e proteção dos destinos |
-| Tokenização | `TokenizeCommandTest` | Processamento completo e tratamento de falhas |
-| Análise sintática | `ParseCommandTest` | Integração entre scanner, parser, XML e escrita |
-| Exceções de aplicação | `SourceProcessingExceptionTest` | Contextualização e preservação de causas |
-| Argumentos e CLI | `CliArgumentsTest`, `CliArgumentParserTest`, `CliIntegrationTest` | Comandos, opções, ajuda e códigos de saída |
-| Ambiente | `BuildEnvironmentTest` | Compatibilidade com o ambiente Java |
+```text
+SymbolTest
+SymbolTableTest
+VmWriterTest
+SyntaxTreeNavigatorTest
+CompilationContextTest
+CompilationExceptionTest
+SubroutineCatalogTest
+ExpressionCompilerTest
+StatementCompilerTest
+ClassCompilerTest
+JackVmCompilerTest
+```
 
-Os testes verificam que `tokenize` e `parse` compartilham os serviços de entrada e saída, mas executam seus respectivos fluxos de processamento.
+Também existem testes específicos para grupos de expressões, chamadas, arrays, objetos e fluxo de controle.
 
-Também cobrem a política de processamento **fail-fast**, a rejeição de destinos inválidos e a preservação de arquivos já existentes diante de falhas.
+Esses testes verificam:
 
-Os diagnósticos léxicos e sintáticos são verificados com suas posições originais. A CLI também é testada quanto aos códigos de saída `0`, `1` e `2` e à separação entre `stdout` e `stderr`.
+- categorias e índices de símbolos;
+- escopos e sombreamento;
+- validação das instruções VM;
+- estado independente por compilação;
+- chamadas locais, externas e de objeto;
+- argumentos implícitos de métodos;
+- construtores e alocação;
+- constantes, strings e operadores;
+- endereçamento de arrays;
+- `let`, `do`, `return`, `if`, `else` e `while`;
+- rótulos determinísticos;
+- diagnósticos semânticos;
+- entradas inválidas e situações-limite.
 
-## 4. Validação com os arquivos oficiais
+`CompilerPublicApiTest` verifica aspectos do contrato público do compilador.
 
-As verificações de aceitação utilizam materiais do repositório oficial [nand2tetris/projects](https://github.com/nand2tetris/projects), revisão:
+### 3.5. Aplicação, I/O e CLI
+
+Os testes operacionais abrangem:
+
+```text
+TokenizeCommandTest
+ParseCommandTest
+CompileCommandTest
+JackFileResolverTest
+OutputPathResolverTest
+TextFileWriterTest
+CliArgumentParserTest
+CliArgumentsTest
+CliIntegrationTest
+CliTokenizeIntegrationTest
+CliParseIntegrationTest
+CliCompileIntegrationTest
+```
+
+Os cenários incluem:
+
+- entrada por arquivo e diretório;
+- descoberta não recursiva e recursiva;
+- extensão `.jack` sensível a maiúsculas;
+- ordenação determinística;
+- diretórios sem fontes elegíveis;
+- leitura UTF-8 estrita;
+- destinos padrão e personalizados;
+- preservação de caminhos relativos;
+- colisões e aliases;
+- proteção contra escrita em fontes;
+- caminhos e diretórios simbólicos;
+- política de escrita;
+- processamento `fail-fast`;
+- mensagens e códigos de saída.
+
+Os testes verificam que o comando `compile` não altera o comportamento de `tokenize` e `parse`.
+
+### 3.6. JAR executável
+
+Os testes de integração do JAR incluem:
+
+| Classe | Testes na validação P3-24 |
+|---|---:|
+| `JarTokenizeIT` | 14 |
+| `JarParseIT` | 17 |
+| `JarCompileIT` | 15 |
+| `JarExecutionIT` | 18 |
+| **Total Failsafe** | **64** |
+
+O JAR é executado em processos Java independentes, verificando sua utilização real pela linha de comando.
+
+## 4. Validação com recursos oficiais
+
+Os materiais de referência foram obtidos do repositório [nand2tetris/projects](https://github.com/nand2tetris/projects), na revisão:
 
 ```text
 6097b770073025891fb8b7a22aa3b72f61f81277
 ```
 
-A licença dos materiais está preservada em:
+A licença MIT está preservada em:
 
 ```text
 src/test/resources/nand2tetris/LICENSE
 ```
 
-### 4.1. Programas de referência
+Os recursos oficiais de diferentes projetos permanecem separados.
 
-São utilizados sete programas Jack, distribuídos em três conjuntos:
+### 4.1. Compatibilidade XML — Partes 1 e 2
 
-| Conjunto | Programas | Quantidade |
-|---|---|---:|
-| `Square` | `Main`, `Square`, `SquareGame` | 3 |
-| `ExpressionLessSquare` | `Main`, `Square`, `SquareGame` | 3 |
-| `ArrayTest` | `Main` | 1 |
-| **Total** | | **7** |
+Os testes utilizam os conjuntos:
 
-Cada programa possui um arquivo-fonte `.jack`, uma referência `*T.xml` para tokens e uma referência `*.xml` para a árvore sintática.
+| Conjunto | Fontes |
+|---|---|
+| Square | `Main`, `Square`, `SquareGame` |
+| ExpressionLessSquare | `Main`, `Square`, `SquareGame` |
+| ArrayTest | `Main` |
 
-A organização é:
+São sete fontes acompanhadas de referências XML.
 
-```text
-src/test/resources/nand2tetris/
-├── LICENSE
-├── Square/
-│   ├── Main.jack
-│   ├── MainT.xml
-│   ├── Main.xml
-│   ├── Square.jack
-│   ├── SquareT.xml
-│   ├── Square.xml
-│   ├── SquareGame.jack
-│   ├── SquareGameT.xml
-│   └── SquareGame.xml
-├── ExpressionLessSquare/
-│   ├── Main.jack
-│   ├── MainT.xml
-│   ├── Main.xml
-│   ├── Square.jack
-│   ├── SquareT.xml
-│   ├── Square.xml
-│   ├── SquareGame.jack
-│   ├── SquareGameT.xml
-│   └── SquareGame.xml
-└── ArrayTest/
-    ├── Main.jack
-    ├── MainT.xml
-    └── Main.xml
-```
+`OfficialTokenXmlCompatibilityTest` compara os XMLs léxicos com os arquivos `*T.xml`.
 
-Os arquivos oficiais são utilizados como referências de leitura. Quando os testes precisam executar os comandos da aplicação, os fontes são copiados para diretórios temporários.
+A comparação é textual, exigindo correspondência de elementos, valores, ordem, espaços e escapes. Apenas os terminadores de linha das referências são normalizados.
 
-### 4.2. Comparação do XML léxico
+`OfficialParserXmlCompatibilityTest` realiza comparações estruturais com as referências sintáticas oficiais.
 
-A classe `OfficialTokenXmlCompatibilityTest` executa a comparação contra os arquivos oficiais `*T.xml`.
-
-São realizados dois tipos principais de verificação:
-
-1. **Scanner e serializador:** `JackTokenizer` e `TokenXmlWriter` são executados diretamente sobre o código-fonte oficial.
-2. **Caso de uso completo:** `TokenizeCommand` processa uma cópia do fonte e produz o XML em um diretório temporário.
-
-A comparação exige correspondência textual com a referência. A única normalização aplicada ao arquivo oficial é a conversão de terminadores CRLF ou CR para LF.
-
-Não são removidos espaços de conteúdo, alterados escapes, reorganizados tokens ou modificados seus valores.
-
-O programa `ArrayTest/Main` possui uma verificação adicional para preservar os espaços significativos da string `HOW MANY NUMBERS?`.
-
-A execução por `TokenizeCommand` também verifica que os bytes do arquivo-fonte permanecem inalterados.
-
-### 4.3. Comparação do XML sintático
-
-A classe `OfficialParserXmlCompatibilityTest` verifica a compatibilidade com os arquivos oficiais `*.xml`.
-
-Assim como na validação léxica, são exercitados dois fluxos:
-
-1. **API:** `JackTokenizer`, `JackParser` e `ParseTreeXmlWriter`.
-2. **Aplicação:** `ParseCommand`, incluindo geração do arquivo `*P.xml`.
-
-São realizadas **14 comparações principais**, duas para cada um dos sete programas oficiais.
-
-A comparação sintática utiliza o processamento estruturado do XML, verificando:
+A comparação considera:
 
 - nomes dos elementos;
-- hierarquia dos nós;
+- hierarquia;
 - quantidade e ordem dos filhos;
 - categorias e valores dos terminais;
-- presença dos espaços convencionais que delimitam o conteúdo dos terminais;
-- preservação dos espaços pertencentes aos valores de strings;
-- ausência de atributos inesperados;
-- ausência de conteúdo não permitido nos elementos gramaticais.
+- espaços significativos;
+- ausência de atributos inesperados.
 
-A comparação desconsidera apenas diferenças de espaços de formatação entre elementos gramaticais e aceita representações equivalentes de entidades XML.
+Diferenças de indentação entre elementos gramaticais e entidades XML equivalentes não invalidam a estrutura.
 
-**Não são ignoradas diferenças de hierarquia, ordem ou conteúdo significativo.**
+Os testes exercitam a API e os casos de uso correspondentes, preservando os arquivos-fonte.
 
-O analisador XML utilizado pelos testes desabilita declarações DTD e mecanismos de entidades externas, evitando a resolução de recursos externos durante a comparação.
+### 4.2. Aceitação de geração VM — Parte 3
 
-Existem ainda testes específicos que confirmam a rejeição de árvores com elementos ausentes, ordem incorreta, valores diferentes ou texto indevido.
+`OfficialVmGenerationTest` utiliza os programas oficiais do Project 11.
 
-Esse critério permite validar a estrutura produzida pelo JackCompiler sem exigir que a indentação física seja idêntica à do arquivo oficial.
+| Programa | Arquivos `.jack` | Classes VM |
+|---|---:|---:|
+| Seven | 1 | 1 |
+| Average | 1 | 1 |
+| ConvertToBin | 1 | 1 |
+| ComplexArrays | 1 | 1 |
+| Square | 3 | 3 |
+| Pong | 4 | 4 |
+| **Total** | **11** | **11** |
 
-### 4.4. Critério de conformidade estrutural
+Os testes verificam a geração dos arquivos `.vm`, a presença de instruções representativas, a ordem das saídas e a preservação dos arquivos de entrada.
 
-O XML sintático segue as categorias definidas pelo Project 10 do nand2tetris.
+Para Square e Pong, são verificadas compilações com destinos padrão e personalizados, incluindo as chamadas entre classes.
 
-Produções auxiliares como `op`, `unaryOp`, `keywordConstant`, `statement` e `subroutineCall` são reconhecidas durante a análise, mas não produzem elementos intermediários próprios no XML.
+O teste automatizado não interpreta nem executa as instruções VM.
 
-Por isso, os testes de aceitação verificam a hierarquia efetivamente utilizada nas referências oficiais, e não uma representação alternativa com uma tag para cada produção auxiliar.
+## 5. Procedimento de compilação dos programas oficiais
 
-A decisão e sua relação com a gramática estão detalhadas em [architecture.md](architecture.md).
-
-## 5. Testes do JAR executável
-
-A classe `JarExecutionIT` é executada pelo Maven Failsafe depois da etapa de empacotamento.
-
-Diferentemente dos testes que invocam diretamente componentes Java, ela utiliza `ProcessBuilder` para iniciar processos independentes com:
-
-```bash
-java -jar target/jackcompiler.jar
-```
-
-Esses testes verificam o comportamento observável do executável, incluindo:
-
-- ajuda e argumentos inválidos;
-- execução dos comandos `tokenize` e `parse`;
-- processamento de arquivos e diretórios;
-- ordenação determinística das saídas;
-- compatibilidade dos XMLs de tokens com as referências oficiais;
-- geração de XMLs sintáticos consistentes com o parser;
-- códigos de saída, `stdout` e `stderr`;
-- diagnósticos léxicos e sintáticos com linha e coluna;
-- processamento interrompido na primeira falha;
-- rejeição de colisões em diretórios personalizados;
-- substituição controlada de saídas nos diretórios padrão;
-- preservação de saídas anteriores quando uma nova análise falha;
-- rejeição de destinos simbólicos, aliases e diretórios protegidos;
-- rejeição de arquivos com UTF-8 inválido;
-- preservação dos arquivos-fonte;
-- caminhos com espaços e caracteres Unicode;
-- rejeição de caracteres incompatíveis com XML 1.0 sem publicar arquivos de saída.
-
-Os testes sintáticos do JAR comparam seu XML com o resultado da API do próprio parser. A comparação independente com os XMLs oficiais é realizada por `OfficialParserXmlCompatibilityTest`.
-
-Essa divisão permite testar tanto a conformidade da análise sintática com as referências quanto a consistência do executável empacotado com a implementação validada.
-
-## 6. Reprodução manual
-
-Além da suíte automatizada, os comandos podem ser verificados diretamente pelo JAR.
-
-O exemplo abaixo utiliza um diretório temporário, sem modificar os materiais oficiais.
-
-Na raiz do repositório:
+Após uma construção aprovada:
 
 ```bash
 mvn clean verify
-
-TEMP_DIR="$(mktemp -d)"
-printf 'class Main {}\n' > "$TEMP_DIR/Main.jack"
-
-java -jar target/jackcompiler.jar \
-  tokenize "$TEMP_DIR/Main.jack" \
-  --output-dir "$TEMP_DIR/tokens"
-
-java -jar target/jackcompiler.jar \
-  parse "$TEMP_DIR/Main.jack" \
-  --output-dir "$TEMP_DIR/parser"
-
-cat "$TEMP_DIR/tokens/MainT.xml"
-cat "$TEMP_DIR/parser/MainP.xml"
-
-rm -r "$TEMP_DIR"
 ```
 
-A tokenização deve produzir:
-
-```xml
-<tokens>
-<keyword> class </keyword>
-<identifier> Main </identifier>
-<symbol> { </symbol>
-<symbol> } </symbol>
-</tokens>
-```
-
-A análise sintática deve produzir:
-
-```xml
-<class>
-  <keyword> class </keyword>
-  <identifier> Main </identifier>
-  <symbol> { </symbol>
-  <symbol> } </symbol>
-</class>
-```
-
-O arquivo-fonte deve permanecer inalterado após as duas operações.
-
-A opção `--help` pode ser verificada separadamente:
+Compile os seis programas para diretórios separados:
 
 ```bash
-java -jar target/jackcompiler.jar --help
+java -jar target/jackcompiler.jar compile \
+  src/test/resources/nand2tetris/project11/Seven/Main.jack \
+  --output-dir target/project11-acceptance/Seven
+
+java -jar target/jackcompiler.jar compile \
+  src/test/resources/nand2tetris/project11/Average/Main.jack \
+  --output-dir target/project11-acceptance/Average
+
+java -jar target/jackcompiler.jar compile \
+  src/test/resources/nand2tetris/project11/ConvertToBin/Main.jack \
+  --output-dir target/project11-acceptance/ConvertToBin
+
+java -jar target/jackcompiler.jar compile \
+  src/test/resources/nand2tetris/project11/ComplexArrays/Main.jack \
+  --output-dir target/project11-acceptance/ComplexArrays
+
+java -jar target/jackcompiler.jar compile \
+  src/test/resources/nand2tetris/project11/Square \
+  --output-dir target/project11-acceptance/Square
+
+java -jar target/jackcompiler.jar compile \
+  src/test/resources/nand2tetris/project11/Pong \
+  --output-dir target/project11-acceptance/Pong
 ```
 
-Os exemplos são verificações manuais complementares. A suíte automatizada abrange condições adicionais que não aparecem nessas execuções simples.
+**Importante:** as saídas personalizadas utilizam `CREATE_NEW`. Para repetir o procedimento, utilize diretórios de saída vazios ou remova somente os artefatos gerados anteriormente em `target/project11-acceptance/`.
 
-## 7. Resultados de validação
+Não compile diretamente sobre os recursos protegidos de `src/test/resources`.
 
-A versão correspondente ao commit [`ea89741`](https://github.com/0zzmandias/jackcompiler/commit/ea89741d1bde0ce5652766c6a5c148007ad1941b), que inclui a refatoração dos métodos de reconhecimento das produções gramaticais, foi validada com `mvn clean verify`.
+A separação por programa impede que arquivos com nomes repetidos, como `Main.vm`, sejam misturados no mesmo diretório.
 
-Os resultados da execução local foram:
+## 6. Execução no Virtual Machine Emulator
+
+No ambiente local utilizado, o emulador pode ser iniciado com:
+
+```bash
+/home/helton/Documentos/Ferramentas/nand2tetris/tools/VMEmulator.sh
+```
+
+O caminho corresponde à instalação local utilizada na validação. Em outros ambientes, é necessário adaptar a localização da ferramenta.
+
+Para cada programa:
+
+1. abrir o emulador;
+2. carregar o diretório contendo os arquivos `.vm`;
+3. selecionar `No animation`;
+4. executar o programa;
+5. fornecer entradas quando necessárias;
+6. observar a saída ou o estado de memória;
+7. comparar o resultado efetivo com o comportamento esperado.
+
+O VM Emulator executa os programas compilados. Essa verificação é independente dos testes de geração textual executados pelo JUnit.
+
+### 6.1. Seven
+
+**Entrada:** nenhuma.
+
+**Comportamento esperado:** impressão do número `7`.
+
+**Resultado observado:** o emulador exibiu `7`.
+
+**Conclusão:** aprovado.
+
+### 6.2. Average
+
+**Entradas utilizadas:** `4`, `6` e `8`.
+
+O programa solicita os valores e calcula sua média.
+
+Resultado esperado:
+
+```text
+The average is 6
+```
+
+**Resultado observado:** média `6`, conforme esperado.
+
+**Conclusão:** aprovado.
+
+### 6.3. ConvertToBin
+
+**Entrada utilizada:** `RAM[8000] = 13`.
+
+O programa escreve a representação binária nas posições seguintes.
+
+A interpretação das posições utiliza o bit menos significativo primeiro:
+
+| Posição | Valor observado |
+|---|---:|
+| RAM[8001] | 1 |
+| RAM[8002] | 0 |
+| RAM[8003] | 1 |
+| RAM[8004] | 1 |
+| RAM[8005] a RAM[8016] | 0 |
+
+Assim, a representação de 16 bits, em ordem convencional, é:
+
+```text
+0000000000001101
+```
+
+A execução foi interrompida manualmente para atualizar e inspecionar a memória, conforme o comportamento do programa no emulador.
+
+**Resultado observado:** as dezesseis posições corresponderam à representação esperada, sem valores `-1` remanescentes.
+
+**Conclusão:** aprovado.
+
+### 6.4. ComplexArrays
+
+O programa realiza operações com arrays e chamadas de funções.
+
+Resultados esperados e observados:
+
+| Teste | Esperado | Obtido |
+|---|---:|---:|
+| 1 | 5 | 5 |
+| 2 | 40 | 40 |
+| 3 | 0 | 0 |
+| 4 | 77 | 77 |
+| 5 | 110 | 110 |
+
+**Conclusão:** cinco resultados corretos; aprovado.
+
+### 6.5. Square
+
+O jogo foi carregado com as três classes:
+
+```text
+Main.vm
+Square.vm
+SquareGame.vm
+```
+
+Foram observados:
+
+- desenho inicial do quadrado;
+- movimentação pelas quatro setas;
+- aumento de tamanho com `x`;
+- diminuição de tamanho com `z`;
+- encerramento com `q`.
+
+Todos os comportamentos foram confirmados durante a execução manual.
+
+**Conclusão:** aprovado.
+
+### 6.6. Pong
+
+O jogo foi carregado com as quatro classes:
+
+```text
+Ball.vm
+Bat.vm
+Main.vm
+PongGame.vm
+```
+
+Foram verificados:
+
+- inicialização com bola, raquete e placar;
+- movimentação horizontal da raquete;
+- deslocamento e colisões da bola;
+- rebatidas e atualização da pontuação;
+- encerramento da partida com `Game Over`.
+
+A captura final mostra:
+
+```text
+Score: 3
+Game Over
+```
+
+O valor `3` evidencia que a pontuação foi atualizada durante a partida.
+
+O autor confirmou que os controles previstos funcionaram, incluindo o encerramento solicitado pelo teclado.
+
+**Conclusão:** aprovado.
+
+## 7. Resultados automatizados observados
+
+A execução local do P3-24 ocorreu em 10/11/2026.
+
+O comando utilizado foi:
+
+```bash
+mvn clean verify
+```
+
+Os resultados registrados foram:
 
 | Verificação | Resultado |
 |---|---|
 | Spotless | Aprovado |
 | Compilação Java 21 | Aprovada |
-| Surefire | 1.101 testes aprovados |
-| Failsafe | 48 testes aprovados |
+| Surefire | 1.799 testes |
+| Failsafe | 64 testes |
 | Falhas | 0 |
 | Erros | 0 |
 | Testes ignorados | 0 |
-| **Total** | **1.149 testes aprovados** |
+| **Total** | **1.863 testes aprovados** |
 | Construção Maven | **BUILD SUCCESS** |
 
-A execução também confirmou os testes de compatibilidade XML do scanner e do parser, incluindo os programas oficiais utilizados como referências.
+`OfficialVmGenerationTest` executou 12 testes, todos aprovados.
 
-### Integração contínua
+A execução confirmou a regressão dos componentes anteriores, o empacotamento do JAR e os testes de integração.
 
-O GitHub Actions executa a construção e os testes automaticamente nos eventos configurados para a branch `main` e em pull requests direcionados a ela.
+Essas evidências correspondem ao estado funcional publicado no commit:
 
-O workflow utiliza Java 21 (Temurin) e executa:
+[`0d389be81a2876ca7ac804085b49493104a96886`](https://github.com/0zzmandias/jackcompiler/commit/0d389be81a2876ca7ac804085b49493104a96886)
+
+## 8. Integração contínua
+
+O workflow `.github/workflows/ci.yml` utiliza Java 21 (Temurin) e executa:
 
 ```bash
 mvn --batch-mode --no-transfer-progress clean verify
 ```
 
-A execução correspondente ao commit `ea89741` foi concluída com sucesso:
+O workflow foi utilizado com sucesso em entregas anteriores do projeto.
 
-**[GitHub Actions — execução 40446352404](https://github.com/0zzmandias/jackcompiler/actions/runs/40446352404)**
+Durante o desenvolvimento da Parte 3, o GitHub impediu a inicialização de jobs por um bloqueio administrativo de cobrança da conta (*billing lock*).
 
-Esses resultados documentam as verificações realizadas sobre o commit identificado. Uma alteração posterior de código ou de testes constitui uma nova versão do projeto e deve ser validada novamente.
+A mensagem apresentada pela plataforma indicava que o job não havia sido iniciado devido ao estado de cobrança da conta. O problema foi encaminhado ao suporte do GitHub.
 
-## 8. Alcance das evidências
+Como o runner não chegou a executar as etapas de construção, esse bloqueio não demonstra defeito de compilação ou falha nos testes do JackCompiler.
 
-Os testes automatizados oferecem evidências de conformidade com a gramática Jack, os formatos XML oficiais e os contratos de execução implementados.
+O desenvolvimento prosseguiu com validação local, conforme os resultados registrados na seção 7.
 
-A comparação com os sete programas oficiais é especialmente relevante porque verifica a saída produzida contra referências independentes da implementação.
+**Situação:** testes locais aprovados; execução da CI no estado final ainda pendente de liberação pela plataforma.
 
-Entretanto, esse conjunto não representa todas as combinações possíveis da linguagem. Por isso, a suíte também contém testes unitários para regras específicas, casos extremos e entradas inválidas que não aparecem necessariamente nos programas de referência.
+Não foram realizadas alterações arbitrárias no workflow ou no código para contornar a restrição administrativa.
 
-A aprovação dos testes demonstra que **nenhuma falha foi detectada pelos cenários executados**. Não equivale a uma prova formal de ausência de defeitos para qualquer entrada possível.
+## 9. Alcance e limitações das evidências
 
-As decisões de arquitetura e de representação sintática estão descritas em [architecture.md](architecture.md). A rastreabilidade dos requisitos e de suas evidências de verificação está registrada em [acceptance.md](acceptance.md).
+Os testes automatizados demonstram conformidade nos cenários exercitados e verificam a preservação dos contratos das entregas anteriores.
 
-As instruções de construção e utilização do programa encontram-se no [README.md](../README.md).
+As comparações XML utilizam referências oficiais independentes da implementação.
+
+Os testes de VM exercitam a geração de instruções, enquanto o VM Emulator confirma o comportamento dos seis programas selecionados.
+
+A aprovação desses testes não representa prova formal de correção para todos os programas Jack possíveis.
+
+O conjunto também não equivale a uma validação completa de tipos entre classes, otimização ou execução de todo o ecossistema Jack.
+
+As decisões técnicas estão em [architecture.md](architecture.md), e a matriz de requisitos está em [acceptance.md](acceptance.md).
+
+As instruções gerais de construção e utilização do programa encontram-se no [README.md](../README.md).

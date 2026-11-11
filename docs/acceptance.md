@@ -1,371 +1,364 @@
 
 # Aceitação e rastreabilidade do JackCompiler
 
-Este documento relaciona os requisitos das Partes 1 e 2 do JackCompiler aos componentes implementados e às evidências de validação disponíveis.
+Este documento relaciona os requisitos implementados, os componentes responsáveis, os testes correspondentes e as evidências observadas no desenvolvimento do JackCompiler.
 
-O projeto reúne o analisador léxico e o analisador sintático da linguagem Jack, desenvolvidos em Java 21, com saídas XML compatíveis com as referências oficiais do nand2tetris.
+O projeto abrange três entregas progressivas:
+
+1. Analisador léxico — Parte 1;
+2. Analisador sintático — Parte 2;
+3. Compilador Jack para VM — Parte 3.
+
+A Parte 3 reutiliza os componentes anteriores e acrescenta geração de código para a máquina virtual Hack.
 
 ## 1. Escopo implementado
 
-O JackCompiler possui dois comandos:
-
-| Comando | Responsabilidade | Saída |
+| Entrega | Funcionalidade principal | Situação |
 |---|---|---|
-| `tokenize` | Reconhecer e classificar os tokens do código-fonte Jack | `NomeT.xml` |
-| `parse` | Reconhecer a gramática Jack e serializar sua árvore sintática | `NomeP.xml` |
+| Parte 1 | Tokenização Jack e XML léxico | Concluída |
+| Parte 2 | Análise descendente recursiva e XML sintático | Concluída |
+| Parte 3 | Compilação Jack → VM e execução oficial | Funcionalmente concluída |
+| Fechamento documental | Atualização e verificação da documentação | Em revisão |
+| Auditoria final | Revisão integral do snapshot | Pendente |
 
-O analisador sintático reutiliza o scanner da Parte 1 por meio de `TokenizationResult`, sem duplicar o reconhecimento léxico.
+As tags anteriores são preservadas:
 
-Os comandos podem processar um arquivo `.jack` ou os arquivos elegíveis diretamente contidos em um diretório. Ambos utilizam os mesmos serviços de leitura, resolução de destinos e escrita.
+```text
+v1.0.0-lexer
+v2.0.0-parser
+```
 
-A validação contempla testes unitários, de integração, de aceitação contra materiais oficiais e de execução do JAR empacotado.
+A tag `v3.0.0-vm` somente será criada após a aprovação final do estado de entrega.
 
 ## 2. Matriz de requisitos — Parte 1
 
-A Parte 1 corresponde à implementação do analisador léxico e à geração dos XMLs de tokens.
-
 | Requisito | Implementação | Evidência |
 |---|---|---|
-| Cinco categorias de tokens | `TokenType`, `Token` | `TokenTest`, `JackTokenizerTest` |
-| Reconhecimento das 21 palavras reservadas | `JackLexicalRules`, `IdentifierRecognizer` | `JackLexicalRulesTest`, `IdentifierRecognizerTest` |
-| Reconhecimento dos 19 símbolos oficiais | `JackLexicalRules`, `SymbolRecognizer` | `JackLexicalRulesTest`, `SymbolRecognizerTest` |
-| Identificadores válidos | `IdentifierRecognizer`, `JackLexicalRules` | `IdentifierRecognizerTest`, `JackTokenizerTest` |
-| Constantes inteiras de `0` a `32767` | `IntegerRecognizer` | `IntegerRecognizerTest`, `JackTokenizerTest` |
-| Constantes de string | `StringRecognizer` | `StringRecognizerTest`, `JackTokenizerTest` |
-| Descarte de espaços e quebras de linha | `WhitespaceConsumer`, `TriviaSkipper` | `WhitespaceConsumerTest`, `TriviaSkipperTest` |
-| Comentários `//`, `/* ... */` e `/** ... */` | `LineCommentConsumer`, `BlockCommentConsumer` | Testes individuais e `TriviaSkipperTest` |
-| Preservação da ordem e dos valores dos tokens | `JackTokenizer`, `TokenizationResult` | `JackTokenizerTest`, `OfficialTokenXmlCompatibilityTest` |
-| Posições de linha e coluna | `SourceCursor`, `SourcePosition` | `SourceCursorTest`, `SourcePositionTest` |
-| Tratamento de entradas léxicas inválidas | `LexicalException`, reconhecedores | `LexicalExceptionTest`, testes dos reconhecedores |
-| API léxica reutilizável | `JackTokenizer.tokenize(String)` | `LexerPublicApiTest` |
-| Separação entre análise léxica, arquivos e XML | Pacotes `lexer`, `io`, `xml` | `LexerPublicApiTest`, testes dos componentes |
-| XML de tokens no formato oficial | `TokenXmlWriter`, `XmlEscaper` | `TokenXmlWriterTest`, `OfficialTokenXmlCompatibilityTest` |
-| Escape de caracteres XML | `XmlEscaper` | `XmlEscaperTest`, `TokenXmlWriterTest` |
-| Compatibilidade com os exemplos oficiais | `JackTokenizer`, `TokenXmlWriter` | `ReferenceProgramsTest`, `OfficialTokenXmlCompatibilityTest` |
-| Execução pela linha de comando | `JackCompiler`, `CliArgumentParser`, `TokenizeCommand` | `CliIntegrationTest`, `JarExecutionIT` |
+| Palavras reservadas | `JackLexicalRules`, `IdentifierRecognizer` | Testes léxicos |
+| Símbolos da linguagem | `JackLexicalRules`, `SymbolRecognizer` | `SymbolRecognizerTest` |
+| Constantes inteiras | `IntegerRecognizer` | `IntegerRecognizerTest` |
+| Strings | `StringRecognizer` | `StringRecognizerTest` |
+| Identificadores | `IdentifierRecognizer` | `IdentifierRecognizerTest` |
+| Espaços e comentários | `TriviaSkipper` e consumidores | Testes de trivia |
+| Posições de linha e coluna | `SourceCursor`, `SourcePosition` | `SourceCursorTest` |
+| Erros léxicos | `LexicalException` | `LexicalExceptionTest` |
+| Tokens imutáveis | `Token`, `TokenizationResult` | Testes de token |
+| Serialização XML | `TokenXmlWriter`, `XmlEscaper` | Testes XML |
+| Comparação com XMLs oficiais | `OfficialTokenXmlCompatibilityTest` | Testes de aceitação |
+| API pública independente da CLI | `JackTokenizer` | `LexerPublicApiTest` |
 
-### 2.1. Interpretação dos símbolos `[` e `]`
+### 2.1. Interpretação dos colchetes
 
-A lista de símbolos apresentada no enunciado da Parte 1 omite os colchetes `[` e `]`.
+O enunciado da Parte 1 omite `[` e `]` em sua enumeração de símbolos.
 
-Entretanto, ambos pertencem ao conjunto oficial de 19 símbolos da linguagem Jack e são necessários para construções como:
+Ambos fazem parte dos 19 símbolos oficiais de Jack e são necessários para arrays.
 
-```jack
-let value = array[index];
-```
-
-A implementação reconhece os dois caracteres para manter a conformidade com a linguagem e permitir a análise de arrays.
-
-Essa decisão é verificada pelos testes das regras léxicas e dos símbolos, além dos programas oficiais que utilizam indexação, especialmente `ArrayTest`.
-
-A inclusão desses caracteres não representa uma extensão da gramática Jack.
+A implementação preserva a especificação da linguagem. Não constitui extensão indevida.
 
 ## 3. Matriz de requisitos — Parte 2
-
-A Parte 2 corresponde à implementação do analisador sintático descendente recursivo e à produção dos XMLs de árvores sintáticas.
 
 ### 3.1. Reconhecimento da gramática
 
 | Requisito | Implementação | Evidência |
 |---|---|---|
-| Análise descendente recursiva | `JackParser`, `ClassStructureParser`, `StatementParser`, `ExpressionParser` | Testes dos componentes e `JackParserTest` |
-| Reconhecimento de classes | `ClassStructureParser.parseClass()` | `ClassStructureParserTest` |
-| Declarações de variáveis de classe | `parseClassVarDec()` | `ClassStructureParserDeclarationTest` |
-| Declarações de sub-rotinas | `parseSubroutineDec()` | `ClassStructureParserSubroutineTest` |
-| Listas de parâmetros | `parseParameterList()` | `ClassStructureParserSubroutineTest` |
-| Corpos de sub-rotinas | `parseSubroutineBody()` | `ClassStructureParserSubroutineTest`, `JackParserTest` |
-| Declarações de variáveis locais | `parseVarDec()` | `ClassStructureParserDeclarationTest`, `ClassStructureParserSubroutineTest` |
-| Reconhecimento de tipos | `parseType()`, `parseReturnType()` | Testes de declarações e sub-rotinas |
-| Sequências de comandos | `StatementParser.parseStatements()` | `StatementParserTest` |
-| Seleção da produção de comando | `StatementParser.parseStatement()` | `StatementParserTest` e testes dos cinco comandos |
-| Comando `let` | `parseLetStatement()` | `StatementParserLetTest` |
-| Comando `if` | `parseIfStatement()` | `StatementParserIfTest` |
-| Comando `while` | `parseWhileStatement()` | `StatementParserWhileTest` |
-| Comando `do` | `parseDoStatement()` | `StatementParserDoTest` |
-| Comando `return` | `parseReturnStatement()` | `StatementParserReturnTest` |
-| Expressões | `ExpressionParser.parseExpression()` | `ExpressionParserTest` |
-| Termos | `parseTerm()` | `ExpressionParserTest`, `ExpressionParserRecursiveTermTest` |
-| Listas de expressões | `parseExpressionList()` | `ExpressionParserExpressionListTest` |
-| Chamadas de sub-rotinas | `parseSubroutineCall()` | `ExpressionParserSubroutineCallTest` |
-| Acesso a arrays | `parseTerm()`, `parseLetStatement()` | `ExpressionParserArrayAccessTest`, `StatementParserLetTest` |
-| Operadores binários | `parseOp()` | `ExpressionParserTest` |
-| Operadores unários | `parseUnaryOp()` | `ExpressionParserRecursiveTermTest` |
-| Constantes de palavra reservada | `parseKeywordConstant()` | `ExpressionParserTest` |
-| Nomes de classes, variáveis e sub-rotinas | Métodos auxiliares dos parsers estruturais | Testes das declarações, expressões e comandos |
-| Reconhecimento de uma classe completa | `JackParser.parse(TokenizationResult)` | `JackParserTest`, `OfficialParserXmlCompatibilityTest` |
+| Classe completa | `JackParser`, `ClassStructureParser` | `JackParserTest` |
+| Variáveis de classe | `ClassStructureParser` | Testes de declarações |
+| Funções, métodos e construtores | `ClassStructureParser` | Testes de sub-rotinas |
+| Parâmetros e variáveis locais | `ClassStructureParser` | Testes de estrutura |
+| Comando `let` | `StatementParser` | `StatementParserLetTest` |
+| Comando `if`/`else` | `StatementParser` | `StatementParserIfTest` |
+| Comando `while` | `StatementParser` | `StatementParserWhileTest` |
+| Comando `do` | `StatementParser` | `StatementParserDoTest` |
+| Comando `return` | `StatementParser` | `StatementParserReturnTest` |
+| Expressões e termos | `ExpressionParser` | `ExpressionParserTest` |
+| Arrays | `ExpressionParser` | `ExpressionParserArrayAccessTest` |
+| Chamadas | `ExpressionParser` | `ExpressionParserSubroutineCallTest` |
+| Expressões aninhadas | `ExpressionParser` | Testes de termos recursivos |
+| Fim correto da entrada | `JackParser`, `TokenCursor` | `JackParserTest` |
 
-### 3.2. Organização por produções gramaticais
+O parser reutiliza diretamente `TokenizationResult`, sem executar novamente o scanner e sem criar XML intermediário.
 
-O enunciado solicita análise descendente recursiva com uma função por não-terminal.
+### 3.2. Produções gramaticais
 
-A implementação distribui as produções entre três componentes:
+`ClassStructureParser`, `StatementParser` e `ExpressionParser` distribuem as responsabilidades de reconhecimento.
 
-- `ClassStructureParser`: estrutura de classes, declarações, tipos e sub-rotinas.
-- `StatementParser`: sequências de comandos e produções específicas de instruções.
-- `ExpressionParser`: expressões, termos, listas, chamadas e produções auxiliares.
+Produções auxiliares como `op`, `unaryOp`, `keywordConstant`, `statement` e `subroutineCall` são tratadas pelos componentes responsáveis, mesmo quando não correspondem a tags XML individuais.
 
-As produções auxiliares `op`, `unaryOp` e `keywordConstant` possuem métodos próprios. A produção `statement` é reconhecida por `parseStatement()`, que delega a análise ao método correspondente ao comando encontrado.
-
-Os métodos de reconhecimento de identificadores tornam explícitos os papéis gramaticais de nomes de classes, sub-rotinas e variáveis nos contextos em que a sintaxe permite essa distinção.
-
-Uma chamada qualificada pode começar pelo nome de uma classe ou de uma variável. Nessa situação, `parseCallQualifier()` reconhece o identificador sem atribuir uma classificação que dependa de informações semânticas.
-
-Esses métodos fazem parte da organização interna do parser e não determinam, por si só, quais elementos serão produzidos no XML.
-
-### 3.3. Navegação e erros sintáticos
+### 3.3. Navegação e erros
 
 | Requisito | Implementação | Evidência |
 |---|---|---|
-| Consulta do token atual | `TokenCursor.peek()` | `TokenCursorTest` |
-| Consulta antecipada de tokens | `TokenCursor.peek(int)` | `TokenCursorTest` |
+| Consulta de tokens | `TokenCursor.peek(...)` | `TokenCursorTest` |
 | Verificação de tipo e valor | `TokenCursor.match(...)` | `TokenCursorTest` |
-| Consumo de tokens | `TokenCursor.advance()` | `TokenCursorTest` |
-| Consumo com validação | `TokenCursor.consume(...)` | `TokenCursorTest` |
-| Reconhecimento de EOF | `TokenCursor.isAtEnd()`, `TokenizationResult.endPosition()` | `TokenCursorTest`, `JackParserTest` |
-| Erros com elemento esperado e token encontrado | `SyntaxException` | `SyntaxExceptionTest`, testes do parser |
-| Preservação de linha e coluna | `Token`, `SourcePosition`, `SyntaxException` | `TokenCursorTest`, `JackParserTest`, `JarExecutionIT` |
-| Rejeição de tokens adicionais | `JackParser.parse(...)` | `JackParserTest` |
-| Integração com o scanner da Parte 1 | `JackTokenizer` → `TokenizationResult` → `JackParser` | `JackParserTest`, `OfficialParserXmlCompatibilityTest` |
-
-O parser utiliza os tokens originais do scanner e não modifica suas posições.
-
-Quando uma produção encontra um token incompatível, a exceção sintática informa o elemento esperado e a posição correspondente. Caso a entrada termine prematuramente, é utilizada a posição EOF preservada pelo scanner.
-
-O reconhecimento de uma classe somente é aceito como completo quando não restam tokens após o fechamento da produção `class`.
+| Consumo validado | `TokenCursor.consume(...)` | `TokenCursorTest` |
+| Identificação de EOF | `TokenCursor`, `TokenizationResult` | Testes do parser |
+| Erros sintáticos posicionados | `SyntaxException` | `SyntaxExceptionTest` |
+| Preservação de posições | `Token`, `SourcePosition` | Testes de parser e CLI |
+| Rejeição de tokens adicionais | `JackParser` | `JackParserTest` |
 
 ### 3.4. Precedência e associatividade
 
-O enunciado da Parte 2 menciona o tratamento adequado de precedência e associatividade.
-
-A gramática oficial de Jack define:
+A gramática Jack define:
 
 ```text
 expression ::= term (op term)*
 ```
 
-Essa produção não estabelece uma precedência obrigatória entre operadores binários.
+O parser não introduz precedência binária convencional.
 
-O JackCompiler preserva os termos e operadores na ordem original e reconhece agrupamentos explícitos por parênteses.
+Os operadores e termos são preservados em sequência, e parênteses são representados por nós aninhados.
 
-Por exemplo:
-
-```jack
-2 + 3 * 4
-```
-
-é representado como uma sequência de termos e operadores dentro de `expression`, sem introduzir uma prioridade matemática adicional.
-
-Já uma expressão entre parênteses produz uma estrutura aninhada, conforme a gramática `term`.
-
-**Decisão de implementação:** preservar a estrutura gramatical e o XML oficial, sem impor uma política própria de precedência binária na etapa de análise sintática.
-
-A especificação de Jack permite políticas de precedência definidas por implementações, mas não exige uma tabela específica para o XML produzido no Project 10.
-
-Os testes `ExpressionParserTest` e `ExpressionParserRecursiveTermTest` verificam a estrutura das expressões, a ordem dos operadores e os agrupamentos explícitos.
-
-A fundamentação arquitetural encontra-se em [architecture.md](architecture.md).
+A decisão mantém a estrutura exigida pelo Project 10.
 
 ## 4. Matriz de requisitos — XML sintático
 
 | Requisito | Implementação | Evidência |
 |---|---|---|
-| Representação da árvore sintática | `ParseNode`, `GrammarNode`, `TerminalNode` | `ParseNodeTest`, `GrammarNodeTest`, `TerminalNodeTest` |
-| Categorias gramaticais | `SyntaxTag` | `SyntaxTagTest`, `ParseTreeXmlWriterTest` |
-| Preservação dos tokens originais | `TerminalNode` | `TerminalNodeTest`, testes do parser |
-| Preservação da ordem dos filhos | `GrammarNode` | `GrammarNodeTest`, `ParseTreeXmlWriterTest` |
-| Serialização da árvore | `ParseTreeXmlWriter` | `ParseTreeXmlWriterTest` |
-| Formatação dos terminais | `TokenXmlWriter.formatToken(...)` | `TokenXmlWriterTest`, `ParseTreeXmlWriterTest` |
-| Escape de caracteres reservados | `XmlEscaper` | `XmlEscaperTest`, testes de XML |
-| Estrutura XML compatível com nand2tetris | `SyntaxTag`, `ParseTreeXmlWriter` | `OfficialParserXmlCompatibilityTest` |
-| Saída com sufixo `P.xml` | `OutputPathResolver`, `ParseCommand` | `OutputPathResolverTest`, `ParseCommandTest` |
-| Geração do XML pelo comando `parse` | `ParseCommand`, `JackCompiler` | `ParseCommandTest`, `JarExecutionIT` |
-| Validação contra arquivos oficiais | `JackParser`, `ParseTreeXmlWriter` | `OfficialParserXmlCompatibilityTest` |
+| Árvore sintática imutável | `ParseNode`, `GrammarNode`, `TerminalNode` | Testes dos nós |
+| Categorias gramaticais oficiais | `SyntaxTag` | `SyntaxTagTest` |
+| Ordem dos filhos | `GrammarNode` | `GrammarNodeTest` |
+| Preservação dos terminais | `TerminalNode` | `TerminalNodeTest` |
+| Serialização XML | `ParseTreeXmlWriter` | `ParseTreeXmlWriterTest` |
+| Formatação dos terminais | `TokenXmlWriter` | Testes XML |
+| Escape XML | `XmlEscaper` | `XmlEscaperTest` |
+| Estrutura oficial | `OfficialParserXmlCompatibilityTest` | Aceitação |
+| Saída `P.xml` | `OutputPathResolver`, `ParseCommand` | Testes I/O |
+| Integração da aplicação | `ParseCommand`, CLI | Testes de integração |
 
-### 4.1. Tags XML e não-terminais
+O XML oficial utiliza quinze categorias gramaticais serializáveis.
 
-O enunciado menciona que os não-terminais devem aparecer como tags XML, mas também exige equivalência estrutural com os arquivos oficiais.
+Não são introduzidas tags intermediárias artificiais para produções auxiliares.
 
-O formato do Project 10 utiliza 15 categorias de elementos gramaticais, representadas por `SyntaxTag`.
+A equivalência com os arquivos do nand2tetris é verificada estruturalmente, considerando hierarquia, ordem e conteúdo significativo.
 
-Produções auxiliares como `statement`, `op`, `unaryOp`, `keywordConstant` e `subroutineCall` não possuem necessariamente elementos XML individuais.
+## 5. Matriz de requisitos — Parte 3
 
-Por exemplo, uma operação binária é representada assim:
-
-```xml
-<expression>
-  <term>
-    <integerConstant> 2 </integerConstant>
-  </term>
-  <symbol> + </symbol>
-  <term>
-    <integerConstant> 3 </integerConstant>
-  </term>
-</expression>
-```
-
-Não é acrescentada uma tag `<op>` entre `<expression>` e `<symbol>`.
-
-Da mesma maneira, um comando `let` aparece como `<letStatement>` dentro de `<statements>`, sem um elemento intermediário `<statement>`.
-
-**Decisão de implementação:** utilizar a hierarquia XML oficial do nand2tetris, mantendo o reconhecimento das produções gramaticais separado da representação serializada.
-
-Essa escolha é verificada diretamente por `OfficialParserXmlCompatibilityTest`, que compara as árvores produzidas com os arquivos de referência.
-
-## 5. Matriz de requisitos — Integração e execução
+### 5.1. Tabela de símbolos
 
 | Requisito | Implementação | Evidência |
 |---|---|---|
-| Projeto desenvolvido em Java 21 | `pom.xml`, código de produção | `BuildEnvironmentTest`, Maven |
-| Construção reproduzível | Maven e plugins configurados | `mvn clean verify`, GitHub Actions |
-| JAR executável | `pom.xml`, `JackCompiler` | `JarExecutionIT` |
-| Comandos `tokenize` e `parse` | `CliArgumentParser`, `CliArguments`, `JackCompiler` | `CliArgumentParserTest`, `CliIntegrationTest` |
-| Ajuda pela CLI | `CliArgumentParser.USAGE`, `JackCompiler` | `CliArgumentParserTest`, `JarExecutionIT` |
-| Entrada por arquivo `.jack` | `JackFileResolver` | `JackFileResolverTest`, `ParseCommandTest` |
-| Entrada por diretório | `JackFileResolver` | `JackFileResolverTest`, `JarExecutionIT` |
-| Ordenação determinística | `JackFileResolver` | `JackFileResolverTest`, `JarExecutionIT` |
-| Leitura UTF-8 estrita | `JackSourceReader` | `JackSourceReaderTest`, `JarExecutionIT` |
-| Saídas `T.xml` e `P.xml` | `OutputPathResolver`, `OutputKind` | `OutputPathResolverTest`, `JarExecutionIT` |
-| Diretórios padrão de saída | `OutputPathResolver` | `OutputPathResolverTest`, testes dos casos de uso |
-| Diretório personalizado por `--output-dir` | `CliArgumentParser`, `OutputPathResolver` | `CliArgumentParserTest`, `JarExecutionIT` |
-| Rejeição de colisões no destino personalizado | `WritePolicy.CREATE_NEW`, `TextFileWriter` | `TextFileWriterTest`, `JarExecutionIT` |
-| Substituição controlada no destino padrão | `WritePolicy.REPLACE_EXISTING`, `TextFileWriter` | `TextFileWriterTest`, `JarExecutionIT` |
-| Proteção dos arquivos-fonte e de referência | `OutputPathResolver`, `TextFileWriter` | `OutputPathResolverTest`, `TextFileWriterTest`, `JarExecutionIT` |
-| Rejeição de links simbólicos nos destinos | `TextFileWriter` | `TextFileWriterTest`, `JarExecutionIT` |
-| Escrita por arquivo temporário | `TextFileWriter` | `TextFileWriterTest` |
-| Processamento fail-fast | `TokenizeCommand`, `ParseCommand` | Testes dos casos de uso, `JarExecutionIT` |
-| Diagnósticos léxicos e sintáticos | `JackCompiler`, `LexicalException`, `SyntaxException` | `CliIntegrationTest`, `JarExecutionIT` |
-| Códigos de saída `0`, `1` e `2` | `JackCompiler` | `CliIntegrationTest`, `JarExecutionIT` |
-| Integração contínua | `.github/workflows/ci.yml` | GitHub Actions |
+| Declarações imutáveis | `Symbol` | `SymbolTest` |
+| Quatro categorias | `SymbolKind` | `SymbolTest` |
+| Índices independentes | `SymbolTable` | `SymbolTableTest` |
+| Escopo de classe | `SymbolTable` | `SymbolTableTest` |
+| Escopo de sub-rotina | `SymbolTable` | `SymbolTableTest` |
+| Reinício do escopo local | `startSubroutine(...)` | `SymbolTableTest` |
+| Receptor implícito de métodos | `startSubroutine(true)` | Testes de símbolos e classes |
+| Rejeição de duplicidades | `SymbolTable` | `SymbolTableTest` |
+| Sombreamento entre escopos | `SymbolTable` | `SymbolTableTest` |
 
-O processamento de diretórios não é recursivo. Os arquivos elegíveis são processados em ordem, e a primeira falha interrompe o lote.
+### 5.2. Emissor VM
 
-As saídas concluídas anteriormente permanecem disponíveis; não existe rollback do conjunto completo.
+| Requisito | Implementação | Evidência |
+|---|---|---|
+| Segmentos de memória | `VmSegment` | `VmWriterTest` |
+| Operações aritméticas | `VmArithmetic` | `VmWriterTest` |
+| `push` e `pop` | `VmWriter` | `VmWriterTest` |
+| `label`, `goto`, `if-goto` | `VmWriter` | `VmWriterTest` |
+| `function` e `call` | `VmWriter` | `VmWriterTest` |
+| `return` | `VmWriter` | `VmWriterTest` |
+| Validação de operandos | `VmWriter` | `VmWriterTest` |
+| Formato textual VM | `VmWriter.toVm()` | `VmWriterTest` |
 
-O conteúdo XML é preparado antes da publicação. Falhas de análise impedem a publicação de um novo XML correspondente ao arquivo que falhou.
+O emissor produz instruções VM em memória, sem realizar escrita de arquivos.
 
-A política padrão admite a substituição de um XML regular existente, enquanto a opção `--output-dir` utiliza uma política que rejeita colisões.
+### 5.3. Compilação semântica
 
-## 6. Referências oficiais e critérios de comparação
+| Requisito | Implementação | Evidência |
+|---|---|---|
+| CST → VM | `JackVmCompiler`, `ClassCompiler` | `JackVmCompilerTest` |
+| Contrato público | `JackVmCompiler` | `CompilerPublicApiTest` |
+| Estado isolado | `CompilationContext` | `CompilationContextTest` |
+| Navegação da CST | `SyntaxTreeNavigator` | `SyntaxTreeNavigatorTest` |
+| Catálogo de rotinas | `SubroutineCatalog` | `SubroutineCatalogTest` |
+| Funções e variáveis locais | `ClassCompiler` | `ClassCompilerTest` |
+| Métodos e `this` | `ClassCompiler` | `ClassCompilerObjectTest` |
+| Construtores e alocação | `ClassCompiler` | Testes de classes e objetos |
+| Chamadas locais | `ExpressionCompiler` | Testes de chamadas |
+| Chamadas de classe e objeto | `ExpressionCompiler` | Testes de chamadas |
+| Constantes e strings | `ExpressionCompiler` | Testes de constantes e variáveis |
+| Operadores binários e unários | `ExpressionCompiler` | `ExpressionCompilerTest` |
+| Arrays — leitura | `ExpressionCompiler` | `ExpressionCompilerArrayAccessTest` |
+| Arrays — escrita | `StatementCompiler` | `StatementCompilerTest` |
+| `let`, `do`, `return` | `StatementCompiler` | `StatementCompilerTest` |
+| `if`, `else`, `while` | `StatementCompiler` | `StatementCompilerControlFlowTest` |
+| Rótulos determinísticos | `CompilationContext`, `StatementCompiler` | Testes de fluxo |
+| Diagnósticos semânticos | `CompilationException` | `CompilationExceptionTest` |
 
-Os recursos de aceitação foram obtidos do repositório [nand2tetris/projects](https://github.com/nand2tetris/projects), na revisão:
+O compilador reutiliza a CST da Parte 2, sem AST secundária ou parser duplicado.
+
+O código produzido segue as convenções da VM Hack e utiliza serviços do Jack OS para operações como alocação de memória, strings, multiplicação e divisão.
+
+A verificação semântica é limitada às inconsistências identificáveis pela implementação. Não existe sistema geral de inferência de tipos entre classes.
+
+## 6. Matriz de requisitos — Integração operacional
+
+| Requisito | Implementação | Evidência |
+|---|---|---|
+| Java 21 e Maven | `pom.xml` | `BuildEnvironmentTest`, Maven |
+| JAR executável | `pom.xml`, `JackCompiler` | Testes `Jar*IT` |
+| Comandos `tokenize`, `parse`, `compile` | CLI e casos de uso | Testes de CLI |
+| Ajuda | `CliArgumentParser` | Testes de argumentos |
+| Entrada por arquivo | `JackFileResolver` | `JackFileResolverTest` |
+| Diretório não recursivo nos comandos antigos | `resolve(Path)` | `JackFileResolverTest` |
+| Diretório recursivo em `compile` | `resolveRecursively(Path)` | `JackFileResolverTest` |
+| Ordem determinística | `JackFileResolver` | Testes de resolução |
+| Leitura UTF-8 estrita | `JackSourceReader` | `JackSourceReaderTest` |
+| Saídas XML | `OutputPathResolver` | `OutputPathResolverTest` |
+| Saídas VM | `OutputPathResolver` | `OutputPathResolverTest` |
+| Espelhamento de subdiretórios | `resolveVmBatch(...)` | Testes I/O e compilação |
+| Destino personalizado | CLI, `OutputPathResolver` | Testes de aplicação |
+| Colisões | `WritePolicy`, `TextFileWriter` | Testes I/O e JAR |
+| Proteção das fontes | `OutputPathResolver`, `TextFileWriter` | Testes I/O |
+| Links simbólicos | Resolvedor e escritor | Testes I/O |
+| Escrita temporária | `TextFileWriter` | `TextFileWriterTest` |
+| Processamento `fail-fast` | Casos de uso | Testes de aplicação e JAR |
+| Diagnósticos posicionados | Exceções e CLI | Testes de CLI |
+| Códigos de saída | `JackCompiler` | Testes de CLI e JAR |
+| Regressão dos comandos antigos | `TokenizeCommand`, `ParseCommand` | Testes anteriores |
+
+A compilação em lote determina os arquivos e destinos antes do processamento.
+
+Cada arquivo passa por leitura, tokenização, análise sintática, compilação VM e publicação. Na primeira falha, o processamento é interrompido, sem rollback global.
+
+As políticas de escrita diferenciam destinos padrão e personalizados.
+
+## 7. Referências oficiais e critérios de comparação
+
+Os materiais provêm de [nand2tetris/projects](https://github.com/nand2tetris/projects), revisão:
 
 ```text
 6097b770073025891fb8b7a22aa3b72f61f81277
 ```
 
-A licença correspondente encontra-se em `src/test/resources/nand2tetris/LICENSE`.
+A licença correspondente está em:
 
-### 6.1. Programas utilizados
+```text
+src/test/resources/nand2tetris/LICENSE
+```
 
-| Conjunto | Arquivos-fonte |
-|---|---|
-| `Square` | `Main.jack`, `Square.jack`, `SquareGame.jack` |
-| `ExpressionLessSquare` | `Main.jack`, `Square.jack`, `SquareGame.jack` |
-| `ArrayTest` | `Main.jack` |
+### 7.1. Referências XML
 
-São sete programas, cada um acompanhado de uma referência léxica `*T.xml` e de uma referência sintática `*.xml`.
+As Partes 1 e 2 utilizam sete fontes Jack dos conjuntos Square, ExpressionLessSquare e ArrayTest.
 
-### 6.2. Critério para o XML léxico
+`OfficialTokenXmlCompatibilityTest` compara as saídas léxicas com os arquivos `*T.xml`.
 
-`OfficialTokenXmlCompatibilityTest` compara a saída produzida pelo scanner com o XML oficial correspondente.
+`OfficialParserXmlCompatibilityTest` compara a estrutura dos XMLs sintáticos com os arquivos oficiais, verificando hierarquia, ordem e terminais.
 
-A comparação é textual e exige correspondência de elementos, valores, ordem, espaços e escapes.
+A comparação XML é independente do compilador VM.
 
-Somente os terminadores de linha da referência são normalizados para LF.
+### 7.2. Referências VM
 
-Os testes exercitam tanto a API de tokenização quanto o caso de uso `TokenizeCommand`, com preservação dos arquivos-fonte.
+A Parte 3 utiliza seis programas oficiais:
 
-### 6.3. Critério para o XML sintático
+| Programa | Fontes Jack | Evidência automatizada | Evidência manual |
+|---|---:|---|---|
+| Seven | 1 | `OfficialVmGenerationTest` | Exibição de 7 |
+| Average | 1 | `OfficialVmGenerationTest` | Média 6 |
+| ConvertToBin | 1 | `OfficialVmGenerationTest` | Binário de 13 |
+| ComplexArrays | 1 | `OfficialVmGenerationTest` | Cinco valores corretos |
+| Square | 3 | `OfficialVmGenerationTest` | Jogo interativo funcional |
+| Pong | 4 | `OfficialVmGenerationTest` | Placar e Game Over |
 
-`OfficialParserXmlCompatibilityTest` compara a estrutura XML gerada com as referências oficiais.
+Os onze arquivos Jack oficiais geram onze arquivos VM, distribuídos pelos seis programas.
 
-São executadas 14 comparações principais:
+O teste automatizado verifica geração de código, não execução no VM Emulator.
 
-- sete pelo fluxo `JackTokenizer` → `JackParser` → `ParseTreeXmlWriter`;
-- sete pelo fluxo de aplicação `ParseCommand`.
+### 7.3. Resultados comportamentais
 
-A equivalência considera:
+| Programa | Resultado efetivamente observado | Situação |
+|---|---|---|
+| Seven | Valor `7` | Aprovado |
+| Average | Entradas `4`, `6`, `8`; média `6` | Aprovado |
+| ConvertToBin | RAM com os 16 bits corretos de `13` | Aprovado |
+| ComplexArrays | `5`, `40`, `0`, `77`, `110` | Aprovado |
+| Square | Movimento, tamanho e encerramento funcionais | Aprovado |
+| Pong | Movimento, colisões, placar `3` e `Game Over` | Aprovado |
 
-- nomes dos elementos;
-- hierarquia gramatical;
-- quantidade e ordem dos filhos;
-- categorias dos terminais;
-- valores dos tokens;
-- espaços significativos das strings;
-- espaços convencionais dos elementos terminais;
-- ausência de atributos inesperados.
+Os resultados foram verificados em execuções manuais do Virtual Machine Emulator 2.5.
 
-São desconsideradas diferenças de espaços de formatação entre elementos gramaticais e aceitas entidades XML equivalentes.
+A documentação dos procedimentos encontra-se em [testing.md](testing.md).
 
-Os testes também verificam que diferenças indevidas de hierarquia, ordem, conteúdo ou espaços significativos são rejeitadas.
+## 8. Evidências de validação automatizada
 
-Essa comparação é independente da implementação do parser, pois utiliza XMLs oficiais como referência.
-
-### 6.4. Validação do JAR
-
-`JarExecutionIT` executa `target/jackcompiler.jar` em processos Java separados, após o empacotamento.
-
-Os testes abrangem as operações `tokenize` e `parse`, os códigos de saída, o tratamento de erros, os diretórios de entrada e saída, os arquivos oficiais e as condições de proteção contra sobrescritas indevidas.
-
-Para os XMLs sintáticos produzidos pelo JAR, a verificação também utiliza o resultado da API do parser. A comparação independente contra as referências oficiais é realizada pelos testes de aceitação descritos anteriormente.
-
-Os materiais oficiais não são utilizados como destinos de escrita pelos testes.
-
-## 7. Documentação
-
-A documentação do projeto está distribuída entre quatro arquivos:
-
-| Arquivo | Conteúdo |
-|---|---|
-| [`README.md`](../README.md) | Apresentação, integrante, linguagem, construção, execução, exemplos, validação e desafios |
-| [`architecture.md`](architecture.md) | Componentes, contratos, dependências e decisões técnicas |
-| [`testing.md`](testing.md) | Estratégia de testes, cenários, recursos oficiais e resultados |
-| [`acceptance.md`](acceptance.md) | Correspondência entre requisitos, implementação e evidências |
-
-O README identifica o integrante e sua matrícula, informa a linguagem utilizada, apresenta os comandos de construção e execução, fornece exemplos de uso e explica os nomes dos XMLs produzidos.
-
-Também registra a validação contra os programas oficiais e descreve os principais desafios encontrados na integração dos analisadores.
-
-As decisões relativas aos símbolos `[` e `]`, à precedência dos operadores e à representação XML são explicadas na documentação, com detalhamento técnico em `architecture.md`.
-
-## 8. Evidências de validação
-
-A validação local do commit [`ea89741`](https://github.com/0zzmandias/jackcompiler/commit/ea89741d1bde0ce5652766c6a5c148007ad1941b) foi realizada com:
+A execução local de 10/11/2026, correspondente ao estado funcional do P3-24, utilizou:
 
 ```bash
 mvn clean verify
 ```
 
-Os resultados registrados foram:
-
 | Verificação | Resultado |
 |---|---|
-| Formatação pelo Spotless | Aprovada |
-| Compilação Java 21 | Aprovada |
-| Surefire | 1.101 testes aprovados |
-| Failsafe | 48 testes aprovados |
+| Spotless | Aprovado |
+| Compilação Java | Aprovada |
+| Surefire | 1.799 |
+| Failsafe | 64 |
+| **Total** | **1.863** |
 | Falhas | 0 |
 | Erros | 0 |
 | Testes ignorados | 0 |
-| **Total** | **1.149 testes aprovados** |
-| Maven | **BUILD SUCCESS** |
+| Maven | `BUILD SUCCESS` |
 
-O mesmo commit foi verificado pelo GitHub Actions, com resultado bem-sucedido:
+Commit funcional:
 
-[GitHub Actions — execução 40446352404](https://github.com/0zzmandias/jackcompiler/actions/runs/40446352404)
+[`0d389be81a2876ca7ac804085b49493104a96886`](https://github.com/0zzmandias/jackcompiler/commit/0d389be81a2876ca7ac804085b49493104a96886)
 
-A execução abrangeu os analisadores léxico e sintático, a compatibilidade XML, os casos de uso, a CLI e os testes de integração do executável.
+Os resultados pertencem ao estado indicado e não devem ser atribuídos automaticamente a alterações posteriores.
 
-Os resultados apresentados correspondem ao código do commit identificado. Alterações posteriores devem ser verificadas por uma nova execução dos testes.
+### 8.1. Integração contínua
 
-## 9. Alcance da aceitação
+O GitHub Actions possui um workflow de construção em Java 21.
 
-As evidências demonstram que os requisitos relacionados neste documento possuem implementação identificável e verificações automatizadas correspondentes.
+Durante a Parte 3, o serviço apresentou um bloqueio administrativo de cobrança (*billing lock*) que impediu a inicialização dos jobs.
 
-A compatibilidade com os materiais oficiais é sustentada por comparações diretas dos XMLs de tokens e por comparações estruturais independentes dos XMLs sintáticos.
+Essa restrição foi identificada como externa ao processo de compilação e aos testes Java. O problema foi encaminhado ao suporte do GitHub.
 
-Os testes unitários complementam essas referências ao exercitar produções gramaticais, condições de erro e situações específicas não necessariamente presentes nos programas oficiais.
+Enquanto o serviço não estiver disponível para executar o workflow, a aprovação da CI no estado final permanece pendente.
 
-A aprovação da suíte significa que nenhuma falha foi detectada nos cenários executados. Ela não representa uma prova formal de correção para todas as entradas possíveis.
+Os resultados locais e a validação manual dos seis programas oficiais estão registrados separadamente e não dependem da execução desse serviço.
 
-Para reprodução das evidências e detalhes dos critérios de teste, consulte [testing.md](testing.md).
+## 9. Documentação e autoria
+
+Os documentos do projeto são:
+
+| Arquivo | Responsabilidade |
+|---|---|
+| [`README.md`](../README.md) | Apresentação, execução, autoria, validação e IA |
+| [`architecture.md`](architecture.md) | Componentes, contratos e decisões técnicas |
+| [`testing.md`](testing.md) | Estratégia, procedimentos e resultados |
+| [`acceptance.md`](acceptance.md) | Rastreabilidade dos requisitos |
+
+O README contém a identificação do integrante, os comandos de utilização e a declaração de apoio recebido de IA.
+
+A identificação completa de modelos utilizados em sessões anteriores à revisão documental depende de registros verificáveis. Essa declaração deve ser conferida antes do fechamento definitivo.
+
+## 10. Pendências da auditoria final
+
+| Item | Situação |
+|---|---|
+| Implementação dos 24 incrementos P3 | Concluída |
+| Execução dos seis programas oficiais | Aprovada |
+| Regressão local no P3-24 | Aprovada |
+| Revisão final dos quatro documentos | Em andamento |
+| Conferência da declaração de IA | Pendente de validação final |
+| Auditoria integral do histórico e do código | Pendente |
+| Regressão após documentação | Pendente |
+| CI no snapshot de entrega | Aguardando liberação administrativa |
+| Tag `v3.0.0-vm` | Não criada |
+| Demonstração final da entrega | Pendente |
+
+Uma pendência não deve ser registrada como aprovada antes da evidência correspondente.
+
+## 11. Alcance da aceitação
+
+As evidências disponíveis demonstram que os requisitos funcionais implementados possuem componentes identificáveis e testes correspondentes.
+
+A compatibilidade XML é sustentada por comparações com arquivos oficiais independentes.
+
+A geração VM é verificada automaticamente e seu funcionamento foi confirmado nos seis programas oficiais do Project 11.
+
+Esses resultados não constituem uma prova formal de correção para qualquer entrada Jack possível.
+
+A conclusão definitiva da Parte 3 exige conferência da documentação, auditoria do histórico e do código, repetição da verificação integral e tratamento explícito da dependência administrativa da CI.
+
+Para os procedimentos reproduzíveis e os detalhes dos resultados, consulte [testing.md](testing.md).

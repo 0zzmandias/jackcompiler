@@ -1,42 +1,51 @@
 
 # Arquitetura do JackCompiler
 
-Este documento descreve a arquitetura implementada do JackCompiler, abrangendo o analisador léxico da Parte 1 e o analisador sintático da Parte 2. Ambos integram o mesmo projeto Java 21 e compartilham os componentes necessários, preservando a separação de responsabilidades.
+Este documento descreve a arquitetura implementada do JackCompiler, abrangendo as três etapas: análise léxica, análise sintática e compilação Jack para VM.
+
+O projeto utiliza Java 21 e Maven. A Parte 3 amplia os componentes existentes sem reimplementar o scanner ou o parser e sem modificar os contratos públicos aprovados nas entregas anteriores.
 
 ## 1. Organização e dependências
 
-O código de produção está organizado em oito pacotes:
+O código de produção está organizado em onze pacotes:
 
-| Pacote | Responsabilidade | Dependências internas |
+| Pacote | Responsabilidade | Dependências internas principais |
 |---|---|---|
-| `jackcompiler.token` | Tipos dos tokens, valores e posições de origem | Nenhuma |
-| `jackcompiler.lexer` | Reconhecimento léxico e tratamento de espaços e comentários | `token` |
-| `jackcompiler.syntax` | Representação imutável da árvore sintática concreta | `token` |
-| `jackcompiler.parser` | Reconhecimento da gramática Jack por análise descendente recursiva | `token`, `syntax` |
-| `jackcompiler.xml` | Serialização de tokens e árvores sintáticas no formato XML oficial | `token`, `syntax` |
-| `jackcompiler.io` | Descoberta de fontes, leitura UTF-8, resolução de destinos e escrita de arquivos | Nenhuma |
-| `jackcompiler.application` | Coordenação dos casos de uso de tokenização e análise sintática | `io`, `lexer`, `parser`, `xml` |
-| `jackcompiler.cli` | Interpretação de argumentos, seleção de comandos e apresentação de resultados e erros | `application`, `lexer`, `parser` |
+| `token` | Tokens, tipos e posições de origem | Nenhuma |
+| `lexer` | Reconhecimento léxico | `token` |
+| `syntax` | Árvore sintática concreta e imutável | `token` |
+| `parser` | Reconhecimento da gramática Jack | `token`, `syntax` |
+| `xml` | Serialização XML | `token`, `syntax` |
+| `symbol` | Declarações, índices e escopos | Nenhuma |
+| `vm` | Formatação das instruções VM | Nenhuma |
+| `compiler` | Tradução da CST em código VM | `token`, `syntax`, `symbol`, `vm` |
+| `io` | Descoberta, leitura, destinos e publicação | Nenhuma camada de análise |
+| `application` | Coordenação dos casos de uso | Componentes de análise, compilação e I/O |
+| `cli` | Argumentos, comandos e diagnósticos | `application` e tipos de diagnóstico |
 
-As dependências são direcionadas das camadas de entrada e coordenação para os componentes especializados.
+As dependências apontam das camadas de entrada e coordenação para os componentes especializados.
 
-O analisador léxico não depende do parser, das árvores sintáticas, da serialização XML ou da interface de linha de comando. O parser utiliza os contratos públicos definidos na Parte 1 sem conhecer o sistema de arquivos ou a CLI.
+O scanner não depende do parser. O parser não depende do compilador. O compilador não acessa diretamente o sistema de arquivos e não depende da CLI.
 
-O pacote `application` coordena o processamento, mas não depende de `cli`. A serialização permanece independente da análise léxica e sintática.
+`application` coordena os componentes, sem depender de `cli`.
 
-Essa organização permite utilizar `JackTokenizer` e `JackParser` diretamente por suas APIs, sem executar o programa pela linha de comando.
+Não foram introduzidas dependências cíclicas deliberadas entre essas camadas.
 
-## 2. Fluxo de execução
+## 2. Fluxos de execução
 
-O JAR utiliza `jackcompiler.cli.JackCompiler` como classe principal. A CLI interpreta os argumentos por meio de `CliArgumentParser` e `CliArguments` e encaminha a operação ao caso de uso correspondente.
+O JAR utiliza `jackcompiler.cli.JackCompiler` como classe principal.
 
-### Tokenização
+`CliArgumentParser` interpreta os argumentos e `CliArguments` representa a operação solicitada.
+
+A CLI delega o processamento ao caso de uso correspondente.
+
+### 2.1. Tokenização
 
 ```text
 JackCompiler
   -> CliArgumentParser
   -> TokenizeCommand
-     -> JackFileResolver
+     -> JackFileResolver.resolve
      -> JackSourceReader
      -> JackTokenizer
         -> TokenizationResult
@@ -46,17 +55,15 @@ JackCompiler
   -> resultado ou diagnóstico
 ```
 
-O comando `tokenize` recebe um arquivo Jack ou um diretório, identifica os fontes elegíveis e processa cada arquivo individualmente.
+A saída segue o formato `NomeT.xml`.
 
-O scanner produz um `TokenizationResult`, posteriormente serializado por `TokenXmlWriter`. A saída segue o padrão `NomeT.xml`.
-
-### Análise sintática
+### 2.2. Análise sintática
 
 ```text
 JackCompiler
   -> CliArgumentParser
   -> ParseCommand
-     -> JackFileResolver
+     -> JackFileResolver.resolve
      -> JackSourceReader
      -> JackTokenizer
         -> TokenizationResult
@@ -68,267 +75,161 @@ JackCompiler
   -> resultado ou diagnóstico
 ```
 
-O comando `parse` reutiliza o mesmo scanner e os mesmos serviços de entrada e saída da Parte 1.
+A saída segue o formato `NomeP.xml`.
 
-A diferença está na etapa posterior à tokenização: `JackParser` recebe o resultado léxico e constrói uma árvore sintática concreta, que `ParseTreeXmlWriter` transforma no XML de saída `NomeP.xml`.
+O parser recebe diretamente os tokens do scanner. Não utiliza o XML léxico como entrada intermediária.
 
-`TokenizeCommand` e `ParseCommand` permanecem como casos de uso distintos. Ambos reutilizam os serviços concretos de que necessitam, sem introduzir um coordenador genérico para suas operações.
+### 2.3. Compilação Jack para VM
 
-## 3. Representação léxica
+```text
+JackCompiler
+  -> CliArgumentParser
+  -> CompileCommand
+     -> JackFileResolver.resolveRecursively
+     -> OutputPathResolver.resolveVmBatch
+     -> JackSourceReader
+     -> JackTokenizer
+        -> TokenizationResult
+     -> JackParser
+        -> GrammarNode
+     -> JackVmCompiler
+        -> ClassCompiler
+           -> CompilationContext
+           -> SubroutineCatalog
+           -> SymbolTable
+           -> StatementCompiler
+              -> ExpressionCompiler
+           -> VmWriter
+        -> String VM
+     -> TextFileWriter
+  -> resultado ou diagnóstico
+```
 
-O pacote `jackcompiler.token` estabelece o contrato compartilhado entre scanner e parser.
+A saída segue o formato `Nome.vm`.
 
-### Tipos principais
+`TokenizeCommand`, `ParseCommand` e `CompileCommand` são casos de uso distintos. Os três reutilizam os serviços concretos necessários sem introduzir um coordenador genérico para todos os fluxos.
 
-- **`TokenType`:** enumeração das cinco categorias léxicas oficiais: `KEYWORD`, `SYMBOL`, `INTEGER_CONSTANT`, `STRING_CONSTANT` e `IDENTIFIER`.
-- **`SourcePosition`:** registro imutável de linha e coluna, ambas iniciadas em 1.
-- **`Token`:** registro imutável com tipo, valor e posição de origem.
-- **`TokenizationResult`:** registro que contém a sequência imutável de tokens e a posição correspondente ao fim da entrada.
+## 3. Contratos léxicos
 
-O scanner não produz um token artificial de EOF. A posição final é armazenada separadamente em `TokenizationResult.endPosition()`, permitindo que o parser comunique erros encontrados no término inesperado da entrada.
+O pacote `jackcompiler.token` representa a entrada léxica compartilhada.
 
-A API pública do scanner é:
+| Tipo | Responsabilidade |
+|---|---|
+| `TokenType` | Cinco categorias oficiais |
+| `SourcePosition` | Linha e coluna, iniciadas em 1 |
+| `Token` | Tipo, lexema e posição original |
+| `TokenizationResult` | Sequência imutável de tokens e posição final |
+
+O scanner não produz um token artificial de EOF. A posição do fim da entrada é armazenada em `TokenizationResult.endPosition()`.
+
+A API pública é:
 
 ```java
 new JackTokenizer().tokenize(source)
 ```
 
-O método recebe o conteúdo textual da fonte e retorna `TokenizationResult`. Erros de reconhecimento são comunicados por `LexicalException`, que preserva a posição original da falha.
+Cada chamada utiliza estado independente de leitura. `SourceCursor` acompanha as posições e reconhece LF, CRLF e CR como quebras lógicas de linha.
 
-### Reconhecimento léxico
+`TriviaSkipper` descarta espaços e comentários antes do reconhecimento de cada token.
 
-`JackTokenizer` cria um `SourceCursor` independente para cada análise.
+A ordem dos reconhecedores é:
 
-Antes de reconhecer o próximo token, `TriviaSkipper` descarta espaços e comentários. Os reconhecedores são consultados nesta ordem:
+1. `StringRecognizer`;
+2. `IntegerRecognizer`;
+3. `IdentifierRecognizer`;
+4. `SymbolRecognizer`.
 
-1. `StringRecognizer`
-2. `IntegerRecognizer`
-3. `IdentifierRecognizer`
-4. `SymbolRecognizer`
+`JackLexicalRules` centraliza as palavras reservadas, os símbolos oficiais e as regras de formação dos tokens.
 
-A escolha depende das verificações de cada reconhecedor. Caracteres que não correspondem a nenhuma categoria produzem um erro léxico explícito.
+Os valores originais dos tokens são preservados. O escape XML ocorre apenas na serialização.
 
-`JackLexicalRules` centraliza as regras da linguagem, incluindo as 21 palavras reservadas, os 19 símbolos oficiais, as condições de formação de identificadores e o limite de `32767` para constantes inteiras.
+Erros léxicos são representados por `LexicalException`, com posição da origem.
 
-O conjunto de símbolos inclui `[` e `]`, utilizados na indexação de arrays. Embora esses caracteres estejam ausentes da lista apresentada no enunciado da Parte 1, pertencem à especificação oficial de Jack e são necessários para reconhecer programas como `ArrayTest`.
+## 4. Contratos sintáticos
 
-`SourceCursor` acompanha posições por pontos de código Unicode. As sequências LF, CRLF e CR são tratadas como quebras lógicas de linha.
+O pacote `jackcompiler.parser` implementa análise descendente recursiva.
 
-Os tokens preservam seus valores originais. O escape de caracteres reservados do XML é realizado apenas durante a serialização, não durante o reconhecimento léxico.
-
-## 4. Analisador sintático
-
-O pacote `jackcompiler.parser` implementa um analisador descendente recursivo (*recursive descent parser*) para a gramática Jack.
-
-A organização separa o ponto de entrada público, a navegação pelos tokens e o reconhecimento de diferentes grupos de produções gramaticais.
-
-### JackParser
-
-`JackParser` é a fachada pública do analisador sintático.
-
-Sua operação principal é:
+A fachada pública é:
 
 ```java
 new JackParser().parse(tokenizationResult)
 ```
 
-Cada chamada cria um `TokenCursor` e os componentes internos necessários para analisar uma classe Jack completa.
+Ela recebe um `TokenizationResult` e retorna um `GrammarNode` correspondente à classe Jack reconhecida.
 
-O resultado é um `GrammarNode` correspondente à produção `class`.
+### 4.1. TokenCursor
 
-Após reconhecer o fechamento da classe, o método verifica se todos os tokens foram consumidos. A presença de tokens adicionais é tratada como erro sintático.
+`TokenCursor` navega pelos tokens e concentra as operações:
 
-O parser recebe diretamente o resultado produzido pelo scanner. Não realiza leitura de arquivos, tokenização independente ou serialização XML.
-
-### TokenCursor
-
-`TokenCursor` navega pela sequência imutável recebida do scanner e mantém a posição atual de leitura.
-
-As operações disponibilizadas são:
-
-| Método | Responsabilidade |
+| Operação | Responsabilidade |
 |---|---|
-| `peek()` | Consultar o token atual sem consumi-lo |
+| `peek()` | Consultar o token atual |
 | `peek(offset)` | Consultar um token posterior |
-| `match(type)` | Verificar o tipo do token atual |
-| `match(type, value)` | Verificar o tipo e o valor do token atual |
-| `advance()` | Consumir e retornar o token atual |
-| `consume(type)` | Exigir e consumir um token de determinado tipo |
-| `consume(type, value)` | Exigir e consumir um token de determinado tipo e valor |
-| `isAtEnd()` | Verificar se todos os tokens foram consumidos |
-| `position()` | Obter a posição atual ou a posição original do EOF |
+| `match(...)` | Verificar tipo e/ou valor |
+| `advance()` | Consumir um token |
+| `consume(...)` | Consumir com validação |
+| `isAtEnd()` | Verificar fim dos tokens |
 
-As operações `consume` não avançam o cursor quando o token encontrado não corresponde ao esperado.
+Os erros de reconhecimento são representados por `SyntaxException`.
 
-O compartilhamento de um único cursor pelos componentes internos preserva a ordem de consumo dos tokens e permite reconhecer estruturas recursivas sem duplicar o estado de navegação.
+Caso a entrada termine prematuramente, o parser utiliza a posição EOF informada pelo scanner. Após reconhecer a classe, verifica se restaram tokens inesperados.
 
-### ClassStructureParser
+### 4.2. Reconhecedores gramaticais
 
-`ClassStructureParser` reconhece a estrutura de classes, declarações e sub-rotinas.
+A análise é dividida em três componentes:
 
-Suas principais produções são:
+- `ClassStructureParser`: classes, declarações, tipos, parâmetros e sub-rotinas;
+- `StatementParser`: comandos `let`, `if`, `while`, `do` e `return`;
+- `ExpressionParser`: expressões, termos, arrays e chamadas.
 
-- `class`
-- `classVarDec`
-- `subroutineDec`
-- `parameterList`
-- `subroutineBody`
-- `varDec`
-- `type`
+Produções auxiliares são reconhecidas por métodos internos, sem exigir uma tag XML própria.
 
-Os métodos auxiliares reconhecem nomes de classes, sub-rotinas e variáveis, além do tipo de retorno de uma sub-rotina.
+Os identificadores são interpretados de acordo com o contexto sintático. Uma chamada qualificada pode começar por nome de classe ou variável; a distinção semântica necessária é realizada posteriormente na compilação.
 
-O componente utiliza `StatementParser` para reconhecer os comandos presentes no corpo de cada sub-rotina.
+### 4.3. Precedência e associatividade
 
-### StatementParser
-
-`StatementParser` reconhece sequências de comandos e as cinco formas de instrução previstas na gramática Jack:
-
-- `letStatement`
-- `ifStatement`
-- `whileStatement`
-- `doStatement`
-- `returnStatement`
-
-`parseStatements()` reconhece a repetição de comandos. Para cada ocorrência, `parseStatement()` identifica a produção correspondente e delega seu reconhecimento ao método específico.
-
-Os comandos que contêm expressões utilizam `ExpressionParser`. Estruturas como `if` e `while` podem chamar recursivamente `parseStatements()` para reconhecer comandos aninhados.
-
-O método `parseStatement()` não acrescenta um nó genérico à árvore: retorna o nó específico da instrução reconhecida.
-
-### ExpressionParser
-
-`ExpressionParser` reconhece:
-
-- `expression`
-- `term`
-- `expressionList`
-- `subroutineCall`
-- `op`
-- `unaryOp`
-- `keywordConstant`
-
-O reconhecimento contempla constantes, identificadores, expressões entre parênteses, operadores binários e unários, acesso a arrays e chamadas diretas ou qualificadas de sub-rotinas.
-
-As produções auxiliares possuem métodos específicos, como `parseOp()`, `parseUnaryOp()` e `parseKeywordConstant()`, utilizados pelos métodos que reconhecem as estruturas maiores.
-
-`parseSubroutineCall()` é compartilhado entre a análise de termos e o reconhecimento de comandos `do`, evitando duplicar a gramática das chamadas de sub-rotinas.
-
-O método retorna os nós correspondentes aos tokens e à lista de expressões, sem criar um elemento sintático intermediário que não exista no XML oficial.
-
-### Identificadores e chamadas qualificadas
-
-As produções `className`, `subroutineName` e `varName` utilizam lexicalmente a categoria `IDENTIFIER`. Métodos específicos tornam explícito o papel gramatical do identificador nos contextos em que esse papel é determinado pela sintaxe.
-
-Em uma chamada qualificada, como `obj.method()` ou `Class.method()`, o identificador anterior ao ponto pode representar uma variável ou uma classe. Essa distinção não pode ser estabelecida apenas pela sequência de tokens.
-
-Por esse motivo, `parseCallQualifier()` reconhece o identificador qualificador sem atribuir antecipadamente uma classificação que dependa de informações externas à gramática.
-
-A representação XML preserva o identificador original em ambos os casos.
-
-## 5. Precedência, associatividade e agrupamento
-
-A gramática oficial de Jack define expressões binárias pela produção:
+A gramática Jack define:
 
 ```text
 expression ::= term (op term)*
 ```
 
-Essa produção não impõe uma hierarquia obrigatória de precedência entre operadores binários.
+O parser preserva a sequência de termos e operadores sem impor uma tabela convencional de precedência.
 
-O `ExpressionParser` reconhece um termo inicial e, em seguida, zero ou mais pares formados por operador e termo. A árvore preserva essa sequência, sem introduzir agrupamentos implícitos baseados nas convenções de outras linguagens.
+Parênteses explícitos são representados por termos aninhados.
 
-Assim, a entrada:
+O compilador utiliza essa mesma estrutura, emitindo as operações na ordem representada pela CST.
 
-```jack
-2 + 3 * 4
-```
+## 5. Árvore sintática concreta
 
-é representada como uma expressão que contém três termos e dois operadores, em sua ordem original. O parser não calcula um resultado aritmético nem reorganiza a expressão para privilegiar a multiplicação.
+O pacote `jackcompiler.syntax` contém:
 
-Os parênteses são tratados de forma distinta. A produção `term` permite reconhecer uma expressão entre `(` e `)`, gerando um novo nó `expression` aninhado dentro de `term`.
+- `ParseNode`: contrato de representação dos nós;
+- `GrammarNode`: nó gramatical com filhos ordenados;
+- `TerminalNode`: nó terminal associado a um token;
+- `SyntaxTag`: categorias gramaticais serializáveis.
 
-Portanto, agrupamentos explícitos são preservados na árvore sintática.
+A árvore é imutável e preserva os tokens originais.
 
-Essa organização foi adotada para manter correspondência com a gramática e com os arquivos XML oficiais do nand2tetris. A especificação da linguagem permite diferentes políticas de precedência para compiladores, mas não determina que o XML do analisador sintático introduza uma política adicional.
+Os quinze elementos gramaticais do formato XML oficial são representados por `SyntaxTag`.
 
-## 6. Representação da árvore sintática
+Essa mesma estrutura é utilizada pelo parser, pelo serializador XML e pelo compilador VM.
 
-O pacote `jackcompiler.syntax` define uma árvore sintática concreta e imutável.
+Não foi introduzida uma segunda AST ou uma conversão para XML como requisito de compilação.
 
-A interface selada `ParseNode` admite duas implementações:
+## 6. Serialização XML
 
-| Tipo | Representação |
-|---|---|
-| `GrammarNode` | Produção gramatical, identificada por `SyntaxTag`, com filhos em ordem |
-| `TerminalNode` | Token léxico original, preservando tipo, valor e posição |
+O pacote `jackcompiler.xml` permanece independente da análise gramatical e da compilação VM.
 
-Ambas as implementações são registros Java (*records*).
+`TokenXmlWriter` serializa a sequência léxica, enquanto `ParseTreeXmlWriter` percorre os nós da CST.
 
-`GrammarNode` realiza uma cópia imutável da lista de filhos. `TerminalNode` mantém a referência ao token original.
+`XmlEscaper` concentra o escape dos caracteres reservados.
 
-O uso de uma árvore sintática concreta permite preservar elementos importantes para a equivalência XML, incluindo palavras reservadas, identificadores, símbolos delimitadores e operadores.
+A serialização preserva o formato oficial de terminais e usa UTF-8 e terminadores LF.
 
-### Categorias de nós gramaticais
+### 6.1. Produções auxiliares
 
-A enumeração `SyntaxTag` contém as 15 categorias utilizadas no formato XML sintático oficial:
-
-```text
-CLASS
-CLASS_VAR_DEC
-SUBROUTINE_DEC
-PARAMETER_LIST
-SUBROUTINE_BODY
-VAR_DEC
-STATEMENTS
-LET_STATEMENT
-IF_STATEMENT
-WHILE_STATEMENT
-DO_STATEMENT
-RETURN_STATEMENT
-EXPRESSION
-TERM
-EXPRESSION_LIST
-```
-
-Nem toda produção reconhecida pelo parser corresponde a um `GrammarNode` próprio.
-
-Essa distinção é intencional: a responsabilidade de reconhecer uma produção gramatical não implica a necessidade de introduzir um elemento adicional na representação XML.
-
-## 7. Serialização XML
-
-O pacote `jackcompiler.xml` contém os componentes responsáveis pela produção das duas modalidades de XML.
-
-### TokenXmlWriter
-
-`TokenXmlWriter.toXml(TokenizationResult)` gera documentos com o elemento raiz `<tokens>` e um elemento para cada token reconhecido.
-
-A formatação de um terminal fica concentrada em `TokenXmlWriter.formatToken(Token)`, método interno ao pacote `xml` que também é reutilizado pelo serializador sintático.
-
-### ParseTreeXmlWriter
-
-`ParseTreeXmlWriter.toXml(GrammarNode)` percorre recursivamente a árvore sintática concreta.
-
-Para cada `GrammarNode`, utiliza a categoria `SyntaxTag` para produzir as tags de abertura e fechamento. Para cada `TerminalNode`, reutiliza a formatação de token definida em `TokenXmlWriter`.
-
-A serialização mantém:
-
-- ordem dos elementos e dos tokens;
-- hierarquia das produções representadas;
-- indentação de dois espaços por nível;
-- terminadores de linha LF;
-- ausência de declaração XML;
-- espaços convencionais dentro dos elementos terminais.
-
-`XmlEscaper` realiza o escape de caracteres reservados e rejeita caracteres incompatíveis com XML 1.0.
-
-### Compatibilidade com o nand2tetris
-
-O enunciado da Parte 2 solicita tanto o reconhecimento das produções gramaticais quanto a equivalência estrutural com os XMLs oficiais.
-
-O JackCompiler adota as categorias e a hierarquia utilizadas nas referências do Project 10 do nand2tetris.
-
-Produções auxiliares como `op`, `unaryOp`, `keywordConstant`, `statement` e `subroutineCall` são reconhecidas pelo parser, mas não introduzem tags intermediárias próprias.
+Produções como `op`, `unaryOp`, `keywordConstant`, `statement` e `subroutineCall` são reconhecidas, mas não introduzem obrigatoriamente elementos XML.
 
 Por exemplo:
 
@@ -344,130 +245,299 @@ Por exemplo:
 </expression>
 ```
 
-O operador é representado pelo terminal `<symbol>`, sem uma tag `<op>`.
+Não existe uma tag `<op>` intermediária.
 
-Da mesma forma, os comandos aparecem diretamente como `<letStatement>`, `<ifStatement>`, `<whileStatement>`, `<doStatement>` ou `<returnStatement>` dentro de `<statements>`, sem um elemento intermediário `<statement>`.
+Essa estrutura é verificada contra os arquivos XML oficiais do Project 10.
 
-Essa representação evita diferenças estruturais em relação aos arquivos oficiais e mantém independente a organização dos métodos de análise sintática.
+## 7. Tabela de símbolos
 
-## 8. Entrada, saída e proteção dos arquivos
+O pacote `jackcompiler.symbol` contém:
 
-Os dois comandos compartilham os serviços do pacote `jackcompiler.io`.
+- `Symbol`: declaração imutável com nome, tipo, categoria e índice;
+- `SymbolKind`: `STATIC`, `FIELD`, `ARGUMENT` e `LOCAL`;
+- `SymbolTable`: escopos, contadores e resolução de nomes.
 
-| Componente | Responsabilidade |
+A tabela possui dois escopos:
+
+| Escopo | Categorias |
 |---|---|
-| `JackFileResolver` | Resolver um arquivo `.jack` ou os arquivos elegíveis de um diretório |
-| `JackSourceReader` | Ler o conteúdo com decodificação UTF-8 estrita |
-| `OutputPathResolver` | Determinar o nome e o diretório do XML de saída |
-| `TextFileWriter` | Publicar o XML em disco conforme a política de escrita |
-| `OutputKind` | Diferenciar a saída léxica da sintática |
-| `WritePolicy` | Diferenciar as políticas `CREATE_NEW` e `REPLACE_EXISTING` |
+| Classe | `STATIC`, `FIELD` |
+| Sub-rotina | `ARGUMENT`, `LOCAL` |
 
-### Resolução de fontes
+Os índices começam em zero e são independentes por categoria.
 
-`JackFileResolver` aceita arquivos `.jack` ou diretórios.
+`startSubroutine(boolean isMethod)` limpa o escopo da sub-rotina e reinicia os contadores correspondentes. Em métodos, reserva o índice zero de argumentos para o receptor implícito.
 
-Na entrada por diretório, seleciona somente arquivos regulares com extensão `.jack` diretamente contidos nele. A seleção é não recursiva e os arquivos são processados em ordem determinística de nome.
+A resolução consulta primeiro o escopo da sub-rotina e depois o escopo de classe.
 
-`JackSourceReader` preserva o conteúdo textual lido e rejeita sequências de bytes inválidas em UTF-8.
+Duplicações no mesmo escopo são rejeitadas. O sombreamento entre escopos é permitido.
 
-### Resolução dos destinos
+A tabela não escreve VM e não conhece os segmentos de memória da máquina virtual.
 
-`OutputPathResolver` utiliza o tipo de saída para determinar o sufixo e o diretório padrão:
+## 8. Emissão de instruções VM
 
-| Operação | Sufixo | Diretório padrão |
-|---|---|---|
-| Tokenização | `T.xml` | `target/generated-tokens/` |
-| Análise sintática | `P.xml` | `target/generated-parser/` |
+O pacote `jackcompiler.vm` contém:
 
-Um diretório definido por `--output-dir` substitui o destino padrão de qualquer uma das operações.
+- `VmSegment`: segmentos válidos da VM;
+- `VmArithmetic`: operações aritméticas e lógicas;
+- `VmWriter`: emissor textual com validação de operandos.
 
-A resolução produz caminhos absolutos normalizados e verifica possíveis aliases entre destino e arquivo-fonte.
-
-### Publicação e colisões
-
-`TextFileWriter` recebe o conteúdo completo do XML antes de iniciar sua escrita.
-
-A publicação utiliza um arquivo temporário no diretório de destino, com duas políticas:
-
-- **`REPLACE_EXISTING`:** utilizada nos diretórios padrão; permite substituir arquivos regulares preexistentes. Tenta uma movimentação atômica e utiliza uma movimentação convencional quando a operação atômica não é suportada.
-- **`CREATE_NEW`:** utilizada quando o usuário fornece `--output-dir`; rejeita destinos existentes e utiliza um hard link para publicar o arquivo sem sobrescrever outro arquivo com o mesmo nome.
-
-A implementação verifica links simbólicos nos caminhos de saída, impede a gravação em diretórios protegidos de código e recursos de teste e não permite publicar XML sobre arquivos-fonte `.jack`.
-
-Os arquivos temporários são removidos após a operação ou falhas recuperáveis.
-
-Não se pressupõe que todas as operações de publicação sejam atômicas em qualquer sistema de arquivos.
-
-### Processamento em lote
-
-`TokenizeCommand` e `ParseCommand` seguem a mesma política de processamento:
-
-- os arquivos selecionados são processados em ordem;
-- a primeira falha interrompe a operação;
-- os resultados já publicados permanecem;
-- os arquivos seguintes não são processados;
-- não existe rollback do lote completo.
-
-Essa política impede que uma falha seja ignorada e evita apresentar como concluído um processamento que não terminou.
-
-## 9. Tratamento de erros
-
-O JackCompiler distingue falhas de argumentos, análise léxica, análise sintática e operações de entrada e saída.
-
-**`LexicalException`** representa erros de reconhecimento de tokens e preserva a posição de origem.
-
-**`SyntaxException`** representa violações da gramática. A exceção mantém a descrição do elemento esperado, o token encontrado — quando existente — e sua posição. No fim da entrada, utiliza a posição EOF fornecida pelo resultado léxico.
-
-**`SourceProcessingException`** associa uma falha ao arquivo-fonte processado e preserva sua causa. Em falhas anteriores à seleção dos arquivos, utiliza o caminho da entrada solicitada.
-
-A CLI interpreta essas falhas e apresenta diagnósticos em `stderr`, utilizando os seguintes códigos de saída:
-
-| Código | Significado |
-|---|---|
-| `0` | Sucesso ou exibição da ajuda |
-| `1` | Falha durante o processamento |
-| `2` | Argumentos inválidos |
-
-Erros léxicos e sintáticos apresentam arquivo, linha e coluna. Os demais diagnósticos não recebem posições artificiais.
-
-## 10. Contratos e verificação arquitetural
-
-A integração entre os analisadores preserva o contrato público da Parte 1:
+`VmWriter` suporta:
 
 ```text
-String
-  -> JackTokenizer.tokenize(...)
-  -> TokenizationResult
-  -> JackParser.parse(...)
-  -> GrammarNode
-  -> ParseTreeXmlWriter.toXml(...)
-  -> String XML
+push segment index
+pop segment index
+add
+sub
+neg
+eq
+gt
+lt
+and
+or
+not
+label name
+goto name
+if-goto name
+function name nLocals
+call name nArgs
+return
 ```
 
-Cada etapa possui responsabilidades delimitadas e pode ser utilizada sem executar as outras camadas de aplicação ou interface.
+O emissor valida nomes, contagens e restrições dos segmentos.
 
-Os testes verificam, entre outros aspectos:
+A saída é mantida em memória até a chamada de `toVm()`. O componente não acessa arquivos nem conhece a CST.
 
-- a API pública do scanner e seus limites de dependência;
-- o reconhecimento das produções da gramática;
-- a preservação de tokens e posições;
-- a estrutura imutável dos nós sintáticos;
-- os erros léxicos e sintáticos;
-- a integração entre scanner, parser e serialização;
-- a equivalência estrutural dos XMLs com as referências oficiais;
-- a execução dos comandos por meio do JAR empacotado.
+As instruções são separadas por LF.
 
-`LexerPublicApiTest` verifica aspectos da visibilidade e do contrato léxico, incluindo referências explícitas a dependências proibidas no código de produção. Essas verificações não constituem uma análise estática completa de todas as dependências possíveis.
+## 9. Compilador Jack → VM
 
-Os testes de aceitação utilizam os programas oficiais `Square`, `ExpressionLessSquare` e `ArrayTest`. A comparação dos XMLs sintáticos preserva a hierarquia, a ordem dos filhos e os valores significativos dos terminais.
+A fachada pública é:
 
-A execução integral é realizada com:
+```java
+new JackVmCompiler().compile(classTree)
+```
+
+Recebe uma árvore `GrammarNode` completa e retorna uma `String` contendo o programa VM.
+
+Cada invocação cria um `ClassCompiler` e estado de compilação independentes.
+
+### 9.1. ClassCompiler
+
+Coordena:
+
+- identificação da classe;
+- registro de variáveis de classe;
+- catálogo de sub-rotinas;
+- criação do escopo de cada rotina;
+- registro de argumentos e variáveis locais;
+- prólogos de funções, métodos e construtores;
+- compilação do corpo.
+
+O catálogo é construído antes da tradução dos corpos, permitindo chamadas a rotinas declaradas posteriormente.
+
+### 9.2. CompilationContext
+
+Mantém o estado da classe em compilação:
+
+- nome da classe;
+- tabela de símbolos;
+- emissor VM;
+- sub-rotina corrente;
+- modalidade relevante ao contexto;
+- contadores de rótulos.
+
+O estado não é compartilhado entre invocações independentes.
+
+### 9.3. SubroutineCatalog
+
+Registra informações das sub-rotinas pertencentes à classe atual, incluindo modalidade, parâmetros e retorno declarado.
+
+Permite distinguir chamadas locais de métodos, funções e construtores, além de detectar declarações duplicadas e inconsistências identificáveis.
+
+Não substitui a tabela de variáveis.
+
+### 9.4. ExpressionCompiler
+
+Traduz termos, operações, variáveis, strings, arrays e chamadas.
+
+O mapeamento de variáveis é:
+
+| Categoria | Segmento |
+|---|---|
+| `STATIC` | `static` |
+| `FIELD` | `this` |
+| `ARGUMENT` | `argument` |
+| `LOCAL` | `local` |
+
+As operações `*` e `/` são traduzidas para chamadas a `Math.multiply` e `Math.divide`.
+
+Constantes booleanas seguem a representação VM: verdadeiro como `-1`, falso e nulo como zero.
+
+Strings são construídas usando `String.new` e `String.appendChar`.
+
+Leituras de arrays calculam endereços e utilizam `pointer 1` e `that 0`.
+
+Chamadas de métodos empilham o receptor e ajustam o número de argumentos. Chamadas de funções e construtores não recebem receptor implícito.
+
+### 9.5. StatementCompiler
+
+Traduz:
+
+- `let`: atribuição simples ou indexada;
+- `do`: chamada com descarte do retorno;
+- `return`: valor retornado ou zero convencional para `void`;
+- `if` e `if-else`: desvios condicionais;
+- `while`: laços com rótulos de controle.
+
+A escrita indexada preserva o valor a atribuir enquanto calcula e configura o endereço de destino.
+
+Os rótulos são gerados por contexto de sub-rotina, de forma determinística e sem colisões nos aninhamentos previstos.
+
+### 9.6. Métodos e construtores
+
+Funções emitem:
+
+```text
+function Classe.rotina nLocals
+```
+
+Métodos associam o receptor implícito a `pointer 0`.
+
+Construtores calculam a quantidade de campos, chamam `Memory.alloc` e configuram `pointer 0`.
+
+Campos são acessados pelo segmento `this`.
+
+O compilador rejeita usos de `this` ou de campos que dependam de instância em funções estáticas, quando identificáveis.
+
+### 9.7. Diagnósticos semânticos
+
+`CompilationException` comunica erros semânticos ou estruturas de CST incompatíveis com a geração VM.
+
+Quando uma posição de origem está disponível, ela é preservada. Caso contrário, o diagnóstico não inventa linha ou coluna.
+
+A implementação verifica inconsistências locais necessárias para emitir VM corretamente, mas não constitui um verificador estático global de tipos.
+
+Classes externas e bibliotecas Jack OS podem ser utilizadas sem compilação conjunta de suas fontes.
+
+`SyntaxTreeNavigator` fornece leitura estrutural segura da CST, sem implementar um novo parser.
+
+## 10. Entrada, saída e processamento
+
+O pacote `jackcompiler.io` é compartilhado pelos três casos de uso.
+
+### 10.1. Descoberta de fontes
+
+`JackFileResolver` possui dois contratos:
+
+| Operação | Utilização |
+|---|---|
+| `resolve(Path)` | `tokenize` e `parse`, sem recursão |
+| `resolveRecursively(Path)` | `compile`, com recursão |
+
+A extensão `.jack` é sensível a maiúsculas e minúsculas.
+
+A resolução recursiva ordena os caminhos relativos, rejeita a travessia de links simbólicos de diretórios e falha se não encontrar fontes elegíveis.
+
+### 10.2. Resolução dos destinos
+
+`OutputKind` representa `TOKEN_XML`, `SYNTAX_XML` e `VM`.
+
+`OutputPathResolver` preserva os destinos XML anteriores e fornece os contratos específicos:
+
+```java
+resolveVm(source, input, outputDirectory)
+resolveVmBatch(input, sources, outputDirectory)
+```
+
+A compilação de diretórios com destino personalizado espelha os subdiretórios relativos.
+
+O lote é planejado antes do processamento, verificando colisões de destinos e aliases das fontes.
+
+### 10.3. Políticas de escrita
+
+`TextFileWriter` publica conteúdo UTF-8 sob duas políticas:
+
+- `REPLACE_EXISTING`: substituição controlada de arquivo regular;
+- `CREATE_NEW`: rejeição de destino ocupado.
+
+A escrita utiliza arquivo temporário no diretório de destino.
+
+Para substituição, tenta movimentação atômica e utiliza alternativa quando o sistema não a suporta. Para criação exclusiva, utiliza publicação que impede sobrescrita por colisão.
+
+O componente verifica caminhos simbólicos, arquivos incompatíveis e diretórios protegidos.
+
+Os destinos são revalidados na publicação, pois o sistema de arquivos pode mudar entre o planejamento e a escrita.
+
+### 10.4. Processamento em lote
+
+`CompileCommand` determina os arquivos e destinos antes de compilar.
+
+Cada fonte é processada sequencialmente:
+
+```text
+leitura
+  -> tokenização
+  -> análise sintática
+  -> compilação VM
+  -> publicação
+```
+
+O conteúdo VM de um arquivo é produzido integralmente antes de sua escrita.
+
+Uma falha interrompe o lote. Saídas já publicadas permanecem; não há transação global nem rollback.
+
+Essa política também é preservada nos casos de uso anteriores, respeitando seus contratos próprios.
+
+## 11. CLI e tratamento de erros
+
+A CLI oferece os comandos `tokenize`, `parse`, `compile` e `--help`.
+
+Os códigos de saída são:
+
+| Código | Condição |
+|---|---|
+| 0 | Sucesso ou ajuda |
+| 1 | Erro de processamento |
+| 2 | Argumentos inválidos |
+
+`SourceProcessingException` associa a falha ao arquivo envolvido.
+
+A apresentação distingue:
+
+- `LexicalException`;
+- `SyntaxException`;
+- `CompilationException`;
+- `IOException` e falhas operacionais.
+
+O diagnóstico utiliza linha e coluna apenas quando essas informações estão disponíveis.
+
+`JackCompiler` imprime arquivos gerados em `stdout` e diagnósticos em `stderr`.
+
+## 12. Verificação arquitetural
+
+Os contratos públicos relevantes são exercitados por:
+
+- `LexerPublicApiTest`;
+- `CompilerPublicApiTest`;
+- testes específicos de scanner, parser, símbolos, compilador e VM;
+- testes dos três casos de uso;
+- testes de I/O e CLI;
+- testes de integração do JAR;
+- testes de aceitação oficial.
+
+A ausência de regressões nos XMLs oficiais é verificada por `OfficialTokenXmlCompatibilityTest` e `OfficialParserXmlCompatibilityTest`.
+
+O contrato de geração VM é exercitado por `OfficialVmGenerationTest`.
+
+As verificações automatizadas não substituem uma auditoria completa de dependências e encapsulamento.
+
+O procedimento integral de validação é:
 
 ```bash
 mvn clean verify
 ```
 
-Os detalhes dos cenários, as evidências de execução e os resultados estão em [testing.md](testing.md). A correspondência entre os requisitos acadêmicos e suas verificações está em [acceptance.md](acceptance.md).
+Os cenários de teste e resultados observados estão em [testing.md](testing.md). A correspondência entre requisitos e evidências está em [acceptance.md](acceptance.md).
 
-As instruções de construção e utilização encontram-se no [README.md](../README.md).
+As instruções de utilização estão no [README.md](../README.md).
