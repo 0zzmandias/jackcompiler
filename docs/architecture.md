@@ -1,9 +1,9 @@
 
 # Arquitetura do JackCompiler
 
-Este documento descreve a arquitetura implementada do JackCompiler, abrangendo as três etapas: análise léxica, análise sintática e compilação Jack para VM.
+Este documento descreve a arquitetura do JackCompiler, abrangendo a análise léxica, a análise sintática e a compilação de programas Jack para instruções da máquina virtual Hack.
 
-O projeto utiliza Java 21 e Maven. A Parte 3 amplia os componentes existentes sem reimplementar o scanner ou o parser e sem modificar os contratos públicos aprovados nas entregas anteriores.
+O sistema utiliza Java 21 e Maven. Seus componentes compartilham representações e contratos bem definidos, permitindo a execução independente das operações de tokenização, análise sintática e compilação VM.
 
 ## 1. Organização e dependências
 
@@ -23,19 +23,19 @@ O código de produção está organizado em onze pacotes:
 | `application` | Coordenação dos casos de uso | Componentes de análise, compilação e I/O |
 | `cli` | Argumentos, comandos e diagnósticos | `application` e tipos de diagnóstico |
 
-As dependências apontam das camadas de entrada e coordenação para os componentes especializados.
+As dependências são direcionadas das camadas de entrada e coordenação para os componentes especializados.
 
 O scanner não depende do parser. O parser não depende do compilador. O compilador não acessa diretamente o sistema de arquivos e não depende da CLI.
 
-`application` coordena os componentes, sem depender de `cli`.
+O pacote `application` coordena os componentes sem depender de `cli`.
 
-Não foram introduzidas dependências cíclicas deliberadas entre essas camadas.
+A arquitetura não utiliza dependências cíclicas como mecanismo de integração entre essas camadas.
 
 ## 2. Fluxos de execução
 
 O JAR utiliza `jackcompiler.cli.JackCompiler` como classe principal.
 
-`CliArgumentParser` interpreta os argumentos e `CliArguments` representa a operação solicitada.
+`CliArgumentParser` interpreta os argumentos, enquanto `CliArguments` representa a operação solicitada.
 
 A CLI delega o processamento ao caso de uso correspondente.
 
@@ -77,7 +77,7 @@ JackCompiler
 
 A saída segue o formato `NomeP.xml`.
 
-O parser recebe diretamente os tokens do scanner. Não utiliza o XML léxico como entrada intermediária.
+O parser recebe diretamente os tokens do scanner. O XML léxico não é utilizado como representação intermediária de entrada.
 
 ### 2.3. Compilação Jack para VM
 
@@ -107,7 +107,7 @@ JackCompiler
 
 A saída segue o formato `Nome.vm`.
 
-`TokenizeCommand`, `ParseCommand` e `CompileCommand` são casos de uso distintos. Os três reutilizam os serviços concretos necessários sem introduzir um coordenador genérico para todos os fluxos.
+`TokenizeCommand`, `ParseCommand` e `CompileCommand` são casos de uso distintos. Cada um coordena seu fluxo específico e reutiliza os serviços de leitura, análise e escrita necessários.
 
 ## 3. Contratos léxicos
 
@@ -184,7 +184,7 @@ A análise é dividida em três componentes:
 
 Produções auxiliares são reconhecidas por métodos internos, sem exigir uma tag XML própria.
 
-Os identificadores são interpretados de acordo com o contexto sintático. Uma chamada qualificada pode começar por nome de classe ou variável; a distinção semântica necessária é realizada posteriormente na compilação.
+Os identificadores são interpretados de acordo com o contexto sintático. Uma chamada qualificada pode começar por nome de classe ou variável; a distinção semântica necessária é realizada na compilação.
 
 ### 4.3. Precedência e associatividade
 
@@ -213,19 +213,19 @@ A árvore é imutável e preserva os tokens originais.
 
 Os quinze elementos gramaticais do formato XML oficial são representados por `SyntaxTag`.
 
-Essa mesma estrutura é utilizada pelo parser, pelo serializador XML e pelo compilador VM.
+Essa estrutura é compartilhada pelo parser, pelo serializador XML e pelo compilador VM.
 
-Não foi introduzida uma segunda AST ou uma conversão para XML como requisito de compilação.
+A compilação utiliza diretamente a CST, sem depender de uma AST secundária ou de conversão intermediária para XML.
 
 ## 6. Serialização XML
 
-O pacote `jackcompiler.xml` permanece independente da análise gramatical e da compilação VM.
+O pacote `jackcompiler.xml` é independente dos componentes de reconhecimento gramatical e compilação VM.
 
 `TokenXmlWriter` serializa a sequência léxica, enquanto `ParseTreeXmlWriter` percorre os nós da CST.
 
 `XmlEscaper` concentra o escape dos caracteres reservados.
 
-A serialização preserva o formato oficial de terminais e usa UTF-8 e terminadores LF.
+A serialização preserva o formato oficial dos terminais e utiliza UTF-8 e terminadores LF.
 
 ### 6.1. Produções auxiliares
 
@@ -272,7 +272,7 @@ A resolução consulta primeiro o escopo da sub-rotina e depois o escopo de clas
 
 Duplicações no mesmo escopo são rejeitadas. O sombreamento entre escopos é permitido.
 
-A tabela não escreve VM e não conhece os segmentos de memória da máquina virtual.
+A tabela de símbolos não escreve VM e não depende dos segmentos de memória da máquina virtual.
 
 ## 8. Emissão de instruções VM
 
@@ -320,7 +320,7 @@ new JackVmCompiler().compile(classTree)
 
 Recebe uma árvore `GrammarNode` completa e retorna uma `String` contendo o programa VM.
 
-Cada invocação cria um `ClassCompiler` e estado de compilação independentes.
+Cada invocação cria um `ClassCompiler` e um estado de compilação independentes.
 
 ### 9.1. ClassCompiler
 
@@ -435,15 +435,15 @@ O pacote `jackcompiler.io` é compartilhado pelos três casos de uso.
 | `resolve(Path)` | `tokenize` e `parse`, sem recursão |
 | `resolveRecursively(Path)` | `compile`, com recursão |
 
-A extensão `.jack` é sensível a maiúsculas e minúsculas.
+A extensão `.jack` diferencia maiúsculas de minúsculas.
 
-A resolução recursiva ordena os caminhos relativos, rejeita a travessia de links simbólicos de diretórios e falha se não encontrar fontes elegíveis.
+A resolução recursiva ordena os caminhos relativos, rejeita a travessia de links simbólicos de diretórios e falha quando não encontra fontes elegíveis.
 
 ### 10.2. Resolução dos destinos
 
 `OutputKind` representa `TOKEN_XML`, `SYNTAX_XML` e `VM`.
 
-`OutputPathResolver` preserva os destinos XML anteriores e fornece os contratos específicos:
+`OutputPathResolver` define os destinos XML e fornece os contratos específicos para VM:
 
 ```java
 resolveVm(source, input, outputDirectory)
@@ -487,7 +487,7 @@ O conteúdo VM de um arquivo é produzido integralmente antes de sua escrita.
 
 Uma falha interrompe o lote. Saídas já publicadas permanecem; não há transação global nem rollback.
 
-Essa política também é preservada nos casos de uso anteriores, respeitando seus contratos próprios.
+Os casos de uso `TokenizeCommand` e `ParseCommand` seguem seus próprios contratos de processamento e publicação.
 
 ## 11. CLI e tratamento de erros
 
@@ -512,11 +512,11 @@ A apresentação distingue:
 
 O diagnóstico utiliza linha e coluna apenas quando essas informações estão disponíveis.
 
-`JackCompiler` imprime arquivos gerados em `stdout` e diagnósticos em `stderr`.
+`JackCompiler` imprime os caminhos dos arquivos gerados em `stdout` e os diagnósticos em `stderr`.
 
 ## 12. Verificação arquitetural
 
-Os contratos públicos relevantes são exercitados por:
+Os contratos públicos e as integrações entre componentes são exercitados por:
 
 - `LexerPublicApiTest`;
 - `CompilerPublicApiTest`;
@@ -524,20 +524,20 @@ Os contratos públicos relevantes são exercitados por:
 - testes dos três casos de uso;
 - testes de I/O e CLI;
 - testes de integração do JAR;
-- testes de aceitação oficial.
+- testes de aceitação com programas oficiais.
 
-A ausência de regressões nos XMLs oficiais é verificada por `OfficialTokenXmlCompatibilityTest` e `OfficialParserXmlCompatibilityTest`.
+A compatibilidade XML é verificada por `OfficialTokenXmlCompatibilityTest` e `OfficialParserXmlCompatibilityTest`.
 
-O contrato de geração VM é exercitado por `OfficialVmGenerationTest`.
+A geração VM é exercitada por `OfficialVmGenerationTest`.
 
-As verificações automatizadas não substituem uma auditoria completa de dependências e encapsulamento.
-
-O procedimento integral de validação é:
+O procedimento de verificação automatizada é:
 
 ```bash
 mvn clean verify
 ```
 
-Os cenários de teste e resultados observados estão em [testing.md](testing.md). A correspondência entre requisitos e evidências está em [acceptance.md](acceptance.md).
+A descrição dos cenários de teste, procedimentos de reprodução e resultados está em [testing.md](testing.md).
 
-As instruções de utilização estão no [README.md](../README.md).
+A matriz de rastreabilidade entre requisitos, componentes e evidências está em [acceptance.md](acceptance.md).
+
+As instruções de construção e utilização da aplicação estão no [README.md](../README.md).

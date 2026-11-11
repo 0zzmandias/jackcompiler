@@ -1,2 +1,3 @@
-# Preserve upstream nand2tetris fixtures exactly, including CRLF line endings.
+# Preserve nand2tetris fixtures as stored in Git, without automatic line-ending conversion.
+# Allow CRLF line endings in Git whitespace checks when present.
 src/test/resources/nand2tetris/** -text whitespace=cr-at-eol

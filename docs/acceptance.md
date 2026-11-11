@@ -1,34 +1,27 @@
 
 # Aceitação e rastreabilidade do JackCompiler
 
-Este documento relaciona os requisitos implementados, os componentes responsáveis, os testes correspondentes e as evidências observadas no desenvolvimento do JackCompiler.
+Este documento relaciona os requisitos funcionais e operacionais do JackCompiler aos componentes responsáveis por sua implementação e às evidências de validação correspondentes.
 
-O projeto abrange três entregas progressivas:
+O sistema integra três operações:
 
-1. Analisador léxico — Parte 1;
-2. Analisador sintático — Parte 2;
-3. Compilador Jack para VM — Parte 3.
+1. Análise léxica de programas Jack;
+2. Análise sintática e geração de XML;
+3. Compilação de programas Jack para instruções da máquina virtual Hack.
 
-A Parte 3 reutiliza os componentes anteriores e acrescenta geração de código para a máquina virtual Hack.
+A rastreabilidade contempla os contratos dos componentes, os testes automatizados e os resultados de execução dos programas oficiais do nand2tetris.
 
 ## 1. Escopo implementado
 
-| Entrega | Funcionalidade principal | Situação |
+| Componente | Funcionalidade principal | Situação |
 |---|---|---|
-| Parte 1 | Tokenização Jack e XML léxico | Concluída |
-| Parte 2 | Análise descendente recursiva e XML sintático | Concluída |
-| Parte 3 | Compilação Jack → VM e execução oficial | Funcionalmente concluída |
-| Fechamento documental | Atualização e verificação da documentação | Em revisão |
-| Auditoria final | Revisão integral do snapshot | Pendente |
+| Analisador léxico | Tokenização Jack e geração de XML léxico | Implementado e validado |
+| Analisador sintático | Análise descendente recursiva e geração de XML sintático | Implementado e validado |
+| Compilador Jack → VM | Tradução de programas Jack para instruções VM | Implementado e validado |
 
-As tags anteriores são preservadas:
+As operações são disponibilizadas pelos subcomandos `tokenize`, `parse` e `compile`, respectivamente.
 
-```text
-v1.0.0-lexer
-v2.0.0-parser
-```
-
-A tag `v3.0.0-vm` somente será criada após a aprovação final do estado de entrega.
+O compilador utiliza diretamente as representações produzidas pelos analisadores léxico e sintático, sem depender de arquivos XML intermediários.
 
 ## 2. Matriz de requisitos — Parte 1
 
@@ -47,13 +40,17 @@ A tag `v3.0.0-vm` somente será criada após a aprovação final do estado de en
 | Comparação com XMLs oficiais | `OfficialTokenXmlCompatibilityTest` | Testes de aceitação |
 | API pública independente da CLI | `JackTokenizer` | `LexerPublicApiTest` |
 
-### 2.1. Interpretação dos colchetes
+### 2.1. Símbolos da linguagem
 
-O enunciado da Parte 1 omite `[` e `]` em sua enumeração de símbolos.
+O analisador reconhece os 19 símbolos oficiais de Jack:
 
-Ambos fazem parte dos 19 símbolos oficiais de Jack e são necessários para arrays.
+```text
+{ } ( ) [ ] . , ; + - * / & | < > = ~
+```
 
-A implementação preserva a especificação da linguagem. Não constitui extensão indevida.
+Os colchetes `[` e `]` são necessários ao reconhecimento de expressões indexadas e operações com arrays.
+
+A implementação segue o conjunto de símbolos definido pela linguagem Jack, incluindo os colchetes não enumerados no enunciado acadêmico da Parte 1.
 
 ## 3. Matriz de requisitos — Parte 2
 
@@ -76,13 +73,19 @@ A implementação preserva a especificação da linguagem. Não constitui extens
 | Expressões aninhadas | `ExpressionParser` | Testes de termos recursivos |
 | Fim correto da entrada | `JackParser`, `TokenCursor` | `JackParserTest` |
 
-O parser reutiliza diretamente `TokenizationResult`, sem executar novamente o scanner e sem criar XML intermediário.
+O parser recebe diretamente um `TokenizationResult` e produz uma árvore sintática concreta (CST).
+
+O reconhecimento gramatical não depende da leitura de XML léxico e não executa novamente a tokenização.
 
 ### 3.2. Produções gramaticais
 
-`ClassStructureParser`, `StatementParser` e `ExpressionParser` distribuem as responsabilidades de reconhecimento.
+O reconhecimento das estruturas da linguagem é distribuído entre:
 
-Produções auxiliares como `op`, `unaryOp`, `keywordConstant`, `statement` e `subroutineCall` são tratadas pelos componentes responsáveis, mesmo quando não correspondem a tags XML individuais.
+- `ClassStructureParser`: classes, declarações e sub-rotinas;
+- `StatementParser`: comandos da linguagem;
+- `ExpressionParser`: expressões, termos, arrays e chamadas.
+
+Produções auxiliares como `op`, `unaryOp`, `keywordConstant`, `statement` e `subroutineCall` são tratadas pelos componentes sintáticos, mesmo quando não correspondem a elementos XML individuais.
 
 ### 3.3. Navegação e erros
 
@@ -104,11 +107,11 @@ A gramática Jack define:
 expression ::= term (op term)*
 ```
 
-O parser não introduz precedência binária convencional.
+O parser preserva a sequência de termos e operadores sem introduzir precedência binária convencional.
 
-Os operadores e termos são preservados em sequência, e parênteses são representados por nós aninhados.
+Parênteses explícitos são representados por nós sintáticos aninhados.
 
-A decisão mantém a estrutura exigida pelo Project 10.
+A tradução VM utiliza a sequência representada pela CST, conforme a estrutura gramatical reconhecida.
 
 ## 4. Matriz de requisitos — XML sintático
 
@@ -121,15 +124,15 @@ A decisão mantém a estrutura exigida pelo Project 10.
 | Serialização XML | `ParseTreeXmlWriter` | `ParseTreeXmlWriterTest` |
 | Formatação dos terminais | `TokenXmlWriter` | Testes XML |
 | Escape XML | `XmlEscaper` | `XmlEscaperTest` |
-| Estrutura oficial | `OfficialParserXmlCompatibilityTest` | Aceitação |
+| Estrutura oficial | `OfficialParserXmlCompatibilityTest` | Testes de aceitação |
 | Saída `P.xml` | `OutputPathResolver`, `ParseCommand` | Testes I/O |
 | Integração da aplicação | `ParseCommand`, CLI | Testes de integração |
 
-O XML oficial utiliza quinze categorias gramaticais serializáveis.
+A serialização utiliza as quinze categorias gramaticais definidas pelo formato XML do Project 10.
 
-Não são introduzidas tags intermediárias artificiais para produções auxiliares.
+As produções auxiliares não exigem elementos XML intermediários adicionais.
 
-A equivalência com os arquivos do nand2tetris é verificada estruturalmente, considerando hierarquia, ordem e conteúdo significativo.
+A compatibilidade com as referências oficiais é verificada estruturalmente, considerando hierarquia, ordem e conteúdo significativo dos terminais.
 
 ## 5. Matriz de requisitos — Parte 3
 
@@ -147,6 +150,10 @@ A equivalência com os arquivos do nand2tetris é verificada estruturalmente, co
 | Rejeição de duplicidades | `SymbolTable` | `SymbolTableTest` |
 | Sombreamento entre escopos | `SymbolTable` | `SymbolTableTest` |
 
+A tabela de símbolos mantém escopos independentes para declarações de classe e de sub-rotina.
+
+Os símbolos são classificados em `STATIC`, `FIELD`, `ARGUMENT` e `LOCAL`, com índices independentes por categoria.
+
 ### 5.2. Emissor VM
 
 | Requisito | Implementação | Evidência |
@@ -160,7 +167,7 @@ A equivalência com os arquivos do nand2tetris é verificada estruturalmente, co
 | Validação de operandos | `VmWriter` | `VmWriterTest` |
 | Formato textual VM | `VmWriter.toVm()` | `VmWriterTest` |
 
-O emissor produz instruções VM em memória, sem realizar escrita de arquivos.
+O emissor produz instruções VM em memória e não realiza operações de escrita de arquivos.
 
 ### 5.3. Compilação semântica
 
@@ -185,11 +192,11 @@ O emissor produz instruções VM em memória, sem realizar escrita de arquivos.
 | Rótulos determinísticos | `CompilationContext`, `StatementCompiler` | Testes de fluxo |
 | Diagnósticos semânticos | `CompilationException` | `CompilationExceptionTest` |
 
-O compilador reutiliza a CST da Parte 2, sem AST secundária ou parser duplicado.
+O compilador utiliza diretamente a CST, sem depender de XML intermediário ou de um parser adicional.
 
-O código produzido segue as convenções da VM Hack e utiliza serviços do Jack OS para operações como alocação de memória, strings, multiplicação e divisão.
+O código produzido segue as convenções da VM Hack e utiliza serviços do Jack OS para operações como alocação de memória, construção de strings, multiplicação e divisão.
 
-A verificação semântica é limitada às inconsistências identificáveis pela implementação. Não existe sistema geral de inferência de tipos entre classes.
+A verificação semântica abrange inconsistências identificáveis pelos componentes implementados. Não constitui um sistema geral de inferência de tipos ou de análise interclasses completa.
 
 ## 6. Matriz de requisitos — Integração operacional
 
@@ -200,7 +207,7 @@ A verificação semântica é limitada às inconsistências identificáveis pela
 | Comandos `tokenize`, `parse`, `compile` | CLI e casos de uso | Testes de CLI |
 | Ajuda | `CliArgumentParser` | Testes de argumentos |
 | Entrada por arquivo | `JackFileResolver` | `JackFileResolverTest` |
-| Diretório não recursivo nos comandos antigos | `resolve(Path)` | `JackFileResolverTest` |
+| Diretório não recursivo em `tokenize` e `parse` | `resolve(Path)` | `JackFileResolverTest` |
 | Diretório recursivo em `compile` | `resolveRecursively(Path)` | `JackFileResolverTest` |
 | Ordem determinística | `JackFileResolver` | Testes de resolução |
 | Leitura UTF-8 estrita | `JackSourceReader` | `JackSourceReaderTest` |
@@ -215,9 +222,9 @@ A verificação semântica é limitada às inconsistências identificáveis pela
 | Processamento `fail-fast` | Casos de uso | Testes de aplicação e JAR |
 | Diagnósticos posicionados | Exceções e CLI | Testes de CLI |
 | Códigos de saída | `JackCompiler` | Testes de CLI e JAR |
-| Regressão dos comandos antigos | `TokenizeCommand`, `ParseCommand` | Testes anteriores |
+| Contratos dos comandos `tokenize` e `parse` | `TokenizeCommand`, `ParseCommand` | Testes específicos e de integração |
 
-A compilação em lote determina os arquivos e destinos antes do processamento.
+A compilação em lote determina os arquivos de entrada e os destinos antes do processamento.
 
 Cada arquivo passa por leitura, tokenização, análise sintática, compilação VM e publicação. Na primeira falha, o processamento é interrompido, sem rollback global.
 
@@ -225,13 +232,13 @@ As políticas de escrita diferenciam destinos padrão e personalizados.
 
 ## 7. Referências oficiais e critérios de comparação
 
-Os materiais provêm de [nand2tetris/projects](https://github.com/nand2tetris/projects), revisão:
+Os recursos de referência foram obtidos do repositório [nand2tetris/projects](https://github.com/nand2tetris/projects), na revisão:
 
 ```text
 6097b770073025891fb8b7a22aa3b72f61f81277
 ```
 
-A licença correspondente está em:
+A licença MIT correspondente encontra-se em:
 
 ```text
 src/test/resources/nand2tetris/LICENSE
@@ -239,17 +246,17 @@ src/test/resources/nand2tetris/LICENSE
 
 ### 7.1. Referências XML
 
-As Partes 1 e 2 utilizam sete fontes Jack dos conjuntos Square, ExpressionLessSquare e ArrayTest.
+A validação dos componentes léxico e sintático utiliza sete fontes Jack dos conjuntos Square, ExpressionLessSquare e ArrayTest.
 
-`OfficialTokenXmlCompatibilityTest` compara as saídas léxicas com os arquivos `*T.xml`.
+`OfficialTokenXmlCompatibilityTest` compara as saídas léxicas com os arquivos oficiais `*T.xml`.
 
-`OfficialParserXmlCompatibilityTest` compara a estrutura dos XMLs sintáticos com os arquivos oficiais, verificando hierarquia, ordem e terminais.
+`OfficialParserXmlCompatibilityTest` compara a estrutura dos XMLs sintáticos com as referências oficiais, verificando hierarquia, ordem e terminais.
 
-A comparação XML é independente do compilador VM.
+A verificação dos arquivos XML é independente da geração VM.
 
 ### 7.2. Referências VM
 
-A Parte 3 utiliza seis programas oficiais:
+A compilação VM é verificada com seis programas oficiais do Project 11:
 
 | Programa | Fontes Jack | Evidência automatizada | Evidência manual |
 |---|---:|---|---|
@@ -260,13 +267,13 @@ A Parte 3 utiliza seis programas oficiais:
 | Square | 3 | `OfficialVmGenerationTest` | Jogo interativo funcional |
 | Pong | 4 | `OfficialVmGenerationTest` | Placar e Game Over |
 
-Os onze arquivos Jack oficiais geram onze arquivos VM, distribuídos pelos seis programas.
+Os onze arquivos Jack utilizados produzem onze arquivos VM, distribuídos pelos seis programas.
 
-O teste automatizado verifica geração de código, não execução no VM Emulator.
+Os testes automatizados verificam a geração do código, sem executar as instruções no Virtual Machine Emulator.
 
 ### 7.3. Resultados comportamentais
 
-| Programa | Resultado efetivamente observado | Situação |
+| Programa | Resultado observado | Situação |
 |---|---|---|
 | Seven | Valor `7` | Aprovado |
 | Average | Entradas `4`, `6`, `8`; média `6` | Aprovado |
@@ -275,90 +282,85 @@ O teste automatizado verifica geração de código, não execução no VM Emulat
 | Square | Movimento, tamanho e encerramento funcionais | Aprovado |
 | Pong | Movimento, colisões, placar `3` e `Game Over` | Aprovado |
 
-Os resultados foram verificados em execuções manuais do Virtual Machine Emulator 2.5.
+Os resultados foram observados durante a execução dos programas compilados no Virtual Machine Emulator 2.5.
 
-A documentação dos procedimentos encontra-se em [testing.md](testing.md).
+Os procedimentos de reprodução e os resultados detalhados estão descritos em [testing.md](testing.md).
 
 ## 8. Evidências de validação automatizada
 
-A execução local de 10/11/2026, correspondente ao estado funcional do P3-24, utilizou:
+A suíte completa foi executada localmente em **11/11/2026**, utilizando o comando:
 
 ```bash
 mvn clean verify
 ```
 
+A execução corresponde ao commit:
+
+[`d77a6ba441ad3969192023a3b32672ca5831d597`](https://github.com/0zzmandias/jackcompiler/commit/d77a6ba441ad3969192023a3b32672ca5831d597)
+
+Os resultados registrados foram:
+
 | Verificação | Resultado |
 |---|---|
-| Spotless | Aprovado |
-| Compilação Java | Aprovada |
-| Surefire | 1.799 |
-| Failsafe | 64 |
-| **Total** | **1.863** |
+| Spotless | 144 arquivos conformes |
+| Compilação Java 21 | 58 arquivos de produção |
+| Compilação dos testes | 86 arquivos |
+| Surefire | 1.799 testes |
+| Failsafe | 64 testes |
+| **Total** | **1.863 testes aprovados** |
 | Falhas | 0 |
 | Erros | 0 |
 | Testes ignorados | 0 |
+| JAR executável | Gerado |
 | Maven | `BUILD SUCCESS` |
 
-Commit funcional:
+`OfficialVmGenerationTest` executou 12 testes, todos aprovados.
 
-[`0d389be81a2876ca7ac804085b49493104a96886`](https://github.com/0zzmandias/jackcompiler/commit/0d389be81a2876ca7ac804085b49493104a96886)
+A execução incluiu testes dos componentes léxicos e sintáticos, da tabela de símbolos, da geração VM, dos casos de uso, da CLI e do JAR executável.
 
-Os resultados pertencem ao estado indicado e não devem ser atribuídos automaticamente a alterações posteriores.
+Os resultados identificam a revisão do código efetivamente submetida à verificação.
 
 ### 8.1. Integração contínua
 
-O GitHub Actions possui um workflow de construção em Java 21.
+O repositório contém um workflow GitHub Actions configurado para Java 21 e Maven.
 
-Durante a Parte 3, o serviço apresentou um bloqueio administrativo de cobrança (*billing lock*) que impediu a inicialização dos jobs.
+O workflow utiliza:
 
-Essa restrição foi identificada como externa ao processo de compilação e aos testes Java. O problema foi encaminhado ao suporte do GitHub.
+```bash
+mvn --batch-mode --no-transfer-progress clean verify
+```
 
-Enquanto o serviço não estiver disponível para executar o workflow, a aprovação da CI no estado final permanece pendente.
+Durante a validação da Parte 3, a execução dos jobs foi impedida por uma restrição administrativa de cobrança da plataforma GitHub (*billing lock*).
 
-Os resultados locais e a validação manual dos seis programas oficiais estão registrados separadamente e não dependem da execução desse serviço.
+O runner não executou as etapas de construção e testes nessas tentativas. Portanto, a execução local aprovada não constitui evidência de aprovação da CI.
+
+Os resultados automatizados locais e a execução manual dos programas oficiais são registrados independentemente do GitHub Actions.
 
 ## 9. Documentação e autoria
 
-Os documentos do projeto são:
+A documentação técnica do JackCompiler está organizada nos seguintes arquivos:
 
-| Arquivo | Responsabilidade |
+| Arquivo | Conteúdo |
 |---|---|
-| [`README.md`](../README.md) | Apresentação, execução, autoria, validação e IA |
-| [`architecture.md`](architecture.md) | Componentes, contratos e decisões técnicas |
-| [`testing.md`](testing.md) | Estratégia, procedimentos e resultados |
-| [`acceptance.md`](acceptance.md) | Rastreabilidade dos requisitos |
+| [`README.md`](../README.md) | Apresentação, autoria, requisitos, execução, validação, desafios, aprendizados e uso de IA |
+| [`architecture.md`](architecture.md) | Arquitetura, componentes, contratos e dependências |
+| [`testing.md`](testing.md) | Estratégia de testes, reprodução e resultados |
+| [`acceptance.md`](acceptance.md) | Matriz de rastreabilidade e evidências de aceitação |
 
-O README contém a identificação do integrante, os comandos de utilização e a declaração de apoio recebido de IA.
+O README identifica o integrante responsável pelo projeto e documenta a ferramenta de inteligência artificial utilizada, suas finalidades e os procedimentos empregados para validar os resultados.
 
-A identificação completa de modelos utilizados em sessões anteriores à revisão documental depende de registros verificáveis. Essa declaração deve ser conferida antes do fechamento definitivo.
+## 10. Alcance da aceitação
 
-## 10. Pendências da auditoria final
+As evidências registradas demonstram a implementação e a validação dos requisitos nos cenários contemplados pela suíte de testes e pelos programas oficiais utilizados.
 
-| Item | Situação |
-|---|---|
-| Implementação dos 24 incrementos P3 | Concluída |
-| Execução dos seis programas oficiais | Aprovada |
-| Regressão local no P3-24 | Aprovada |
-| Revisão final dos quatro documentos | Em andamento |
-| Conferência da declaração de IA | Pendente de validação final |
-| Auditoria integral do histórico e do código | Pendente |
-| Regressão após documentação | Pendente |
-| CI no snapshot de entrega | Aguardando liberação administrativa |
-| Tag `v3.0.0-vm` | Não criada |
-| Demonstração final da entrega | Pendente |
+A compatibilidade XML é verificada mediante comparações com referências oficiais independentes da implementação.
 
-Uma pendência não deve ser registrada como aprovada antes da evidência correspondente.
+A geração VM é verificada por testes automatizados e pela execução comportamental dos seis programas selecionados do Project 11.
 
-## 11. Alcance da aceitação
+Os resultados não constituem prova formal de correção para todos os programas Jack possíveis.
 
-As evidências disponíveis demonstram que os requisitos funcionais implementados possuem componentes identificáveis e testes correspondentes.
+A validação também não equivale a uma análise estática completa de tipos entre classes, otimização de código ou execução de todo o ecossistema Jack.
 
-A compatibilidade XML é sustentada por comparações com arquivos oficiais independentes.
+A execução local da suíte Maven e a situação da integração contínua são apresentadas separadamente, de modo a identificar precisamente a origem das evidências.
 
-A geração VM é verificada automaticamente e seu funcionamento foi confirmado nos seis programas oficiais do Project 11.
-
-Esses resultados não constituem uma prova formal de correção para qualquer entrada Jack possível.
-
-A conclusão definitiva da Parte 3 exige conferência da documentação, auditoria do histórico e do código, repetição da verificação integral e tratamento explícito da dependência administrativa da CI.
-
-Para os procedimentos reproduzíveis e os detalhes dos resultados, consulte [testing.md](testing.md).
+Os procedimentos reproduzíveis e os resultados detalhados estão disponíveis em [testing.md](testing.md).

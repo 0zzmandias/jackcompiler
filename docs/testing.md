@@ -1,9 +1,9 @@
 
 # Testes e validação do JackCompiler
 
-Este documento descreve a estratégia de testes, os procedimentos de reprodução, os materiais oficiais e as evidências observadas nas três partes do JackCompiler.
+Este documento apresenta a estratégia de testes, os procedimentos de reprodução, os recursos oficiais e as evidências de validação do JackCompiler.
 
-A validação combina testes automatizados em Java, execução do JAR empacotado e execução manual dos programas oficiais do Project 11 no Virtual Machine Emulator.
+A verificação compreende análise léxica, análise sintática e compilação Jack para VM. São utilizados testes automatizados em Java, testes de integração do JAR executável e execução dos programas oficiais do Project 11 no Virtual Machine Emulator.
 
 ## 1. Ambiente de testes
 
@@ -22,7 +22,7 @@ O projeto utiliza:
 | Ambiente local utilizado | Debian 13 |
 | Integração contínua | GitHub Actions |
 
-O emulador é uma ferramenta externa ao processo Maven. Sua execução não é simulada por `OfficialVmGenerationTest`.
+O Virtual Machine Emulator é uma ferramenta externa ao processo Maven. Sua execução não é simulada pelos testes JUnit de geração VM.
 
 ## 2. Execução da suíte automatizada
 
@@ -34,7 +34,7 @@ mvn -version
 mvn clean verify
 ```
 
-O Maven executa as etapas de formatação, compilação, testes unitários, empacotamento e testes de integração.
+O Maven executa as etapas de verificação de formatação, compilação, testes unitários, empacotamento e testes de integração.
 
 Se houver falha de formatação:
 
@@ -43,7 +43,7 @@ mvn spotless:apply
 mvn clean verify
 ```
 
-A execução direcionada dos testes oficiais de geração VM utiliza:
+Para executar especificamente os testes oficiais de geração VM:
 
 ```bash
 mvn '-Dtest=OfficialVmGenerationTest' test
@@ -73,16 +73,16 @@ O comando `mvn clean verify` remove os artefatos antigos de `target/` antes de p
 
 ### 2.2. Critérios de aprovação
 
-Uma execução é aprovada quando:
+Uma execução automatizada é aprovada quando:
 
 - a formatação Java é aceita;
-- o código compila;
-- os testes não apresentam falhas ou erros;
-- o JAR é gerado;
-- os testes de integração do executável passam;
+- o código de produção e os testes compilam;
+- os testes executados não apresentam falhas ou erros;
+- o JAR executável é gerado;
+- os testes de integração do executável são aprovados;
 - o Maven termina com `BUILD SUCCESS`.
 
-A aprovação automatizada não substitui os testes comportamentais realizados no VM Emulator.
+A aprovação automatizada não substitui os testes comportamentais realizados no Virtual Machine Emulator.
 
 ## 3. Estratégia de testes
 
@@ -90,7 +90,7 @@ A validação está organizada em seis grupos complementares.
 
 ### 3.1. Analisador léxico
 
-Os testes da Parte 1 abrangem:
+Os testes do analisador léxico abrangem:
 
 - reconhecimento das cinco categorias de tokens;
 - palavras reservadas, símbolos e identificadores;
@@ -119,7 +119,7 @@ TokenXmlWriterTest
 
 ### 3.2. Analisador sintático
 
-Os testes da Parte 2 abrangem:
+Os testes do analisador sintático abrangem:
 
 - estrutura de classes;
 - declarações de variáveis;
@@ -163,7 +163,7 @@ São verificados a imutabilidade, a ordem dos filhos, os terminais, a hierarquia
 
 ### 3.4. Tabela de símbolos e geração VM
 
-Os testes da Parte 3 incluem:
+Os testes do compilador VM incluem:
 
 ```text
 SymbolTest
@@ -235,13 +235,13 @@ Os cenários incluem:
 - processamento `fail-fast`;
 - mensagens e códigos de saída.
 
-Os testes verificam que o comando `compile` não altera o comportamento de `tokenize` e `parse`.
+Os testes verificam os contratos das três operações e a independência dos comportamentos de `tokenize`, `parse` e `compile`.
 
 ### 3.6. JAR executável
 
 Os testes de integração do JAR incluem:
 
-| Classe | Testes na validação P3-24 |
+| Classe | Testes |
 |---|---:|
 | `JarTokenizeIT` | 14 |
 | `JarParseIT` | 17 |
@@ -249,7 +249,7 @@ Os testes de integração do JAR incluem:
 | `JarExecutionIT` | 18 |
 | **Total Failsafe** | **64** |
 
-O JAR é executado em processos Java independentes, verificando sua utilização real pela linha de comando.
+O JAR é executado em processos Java independentes, verificando sua utilização pela interface de linha de comando.
 
 ## 4. Validação com recursos oficiais
 
@@ -265,7 +265,7 @@ A licença MIT está preservada em:
 src/test/resources/nand2tetris/LICENSE
 ```
 
-Os recursos oficiais de diferentes projetos permanecem separados.
+Os recursos oficiais dos diferentes projetos são organizados separadamente.
 
 ### 4.1. Compatibilidade XML — Partes 1 e 2
 
@@ -314,19 +314,19 @@ Os testes exercitam a API e os casos de uso correspondentes, preservando os arqu
 
 Os testes verificam a geração dos arquivos `.vm`, a presença de instruções representativas, a ordem das saídas e a preservação dos arquivos de entrada.
 
-Para Square e Pong, são verificadas compilações com destinos padrão e personalizados, incluindo as chamadas entre classes.
+Para Square e Pong, são verificadas compilações com destinos padrão e personalizados, incluindo chamadas entre classes.
 
 O teste automatizado não interpreta nem executa as instruções VM.
 
 ## 5. Procedimento de compilação dos programas oficiais
 
-Após uma construção aprovada:
+Na raiz do repositório, execute:
 
 ```bash
 mvn clean verify
 ```
 
-Compile os seis programas para diretórios separados:
+Em seguida, compile os seis programas para diretórios separados:
 
 ```bash
 java -jar target/jackcompiler.jar compile \
@@ -362,13 +362,15 @@ A separação por programa impede que arquivos com nomes repetidos, como `Main.v
 
 ## 6. Execução no Virtual Machine Emulator
 
-No ambiente local utilizado, o emulador pode ser iniciado com:
+O Virtual Machine Emulator 2.5 integra as ferramentas do nand2tetris.
+
+Em sistemas Linux, ele pode ser iniciado a partir da raiz da instalação das ferramentas:
 
 ```bash
-/home/helton/Documentos/Ferramentas/nand2tetris/tools/VMEmulator.sh
+./tools/VMEmulator.sh
 ```
 
-O caminho corresponde à instalação local utilizada na validação. Em outros ambientes, é necessário adaptar a localização da ferramenta.
+O comando pressupõe que o diretório atual contenha a pasta `tools/` da instalação do nand2tetris.
 
 Para cada programa:
 
@@ -380,7 +382,7 @@ Para cada programa:
 6. observar a saída ou o estado de memória;
 7. comparar o resultado efetivo com o comportamento esperado.
 
-O VM Emulator executa os programas compilados. Essa verificação é independente dos testes de geração textual executados pelo JUnit.
+O Virtual Machine Emulator executa os programas compilados. Essa verificação é independente dos testes de geração textual executados pelo JUnit.
 
 ### 6.1. Seven
 
@@ -454,7 +456,7 @@ Resultados esperados e observados:
 
 ### 6.5. Square
 
-O jogo foi carregado com as três classes:
+O programa foi carregado com as três classes:
 
 ```text
 Main.vm
@@ -470,13 +472,13 @@ Foram observados:
 - diminuição de tamanho com `z`;
 - encerramento com `q`.
 
-Todos os comportamentos foram confirmados durante a execução manual.
+Os comportamentos foram confirmados durante a execução manual.
 
 **Conclusão:** aprovado.
 
 ### 6.6. Pong
 
-O jogo foi carregado com as quatro classes:
+O programa foi carregado com as quatro classes:
 
 ```text
 Ball.vm
@@ -493,50 +495,52 @@ Foram verificados:
 - rebatidas e atualização da pontuação;
 - encerramento da partida com `Game Over`.
 
-A captura final mostra:
+O estado final observado apresentou:
 
 ```text
 Score: 3
 Game Over
 ```
 
-O valor `3` evidencia que a pontuação foi atualizada durante a partida.
+O valor `3` evidencia a atualização da pontuação durante a partida.
 
-O autor confirmou que os controles previstos funcionaram, incluindo o encerramento solicitado pelo teclado.
+Os controles previstos responderam durante a execução, incluindo o encerramento por teclado.
 
 **Conclusão:** aprovado.
 
-## 7. Resultados automatizados observados
+## 7. Resultados automatizados
 
-A execução local do P3-24 ocorreu em 10/11/2026.
+A suíte completa foi executada localmente em **11/11/2026**, utilizando Java 21 e Maven, no commit:
 
-O comando utilizado foi:
+[`d77a6ba441ad3969192023a3b32672ca5831d597`](https://github.com/0zzmandias/jackcompiler/commit/d77a6ba441ad3969192023a3b32672ca5831d597)
+
+Comando executado:
 
 ```bash
 mvn clean verify
 ```
 
-Os resultados registrados foram:
+Resultados:
 
 | Verificação | Resultado |
 |---|---|
-| Spotless | Aprovado |
-| Compilação Java 21 | Aprovada |
+| Spotless | 144 arquivos conformes |
+| Compilação Java 21 | 58 arquivos de produção |
+| Compilação dos testes | 86 arquivos |
 | Surefire | 1.799 testes |
 | Failsafe | 64 testes |
 | Falhas | 0 |
 | Erros | 0 |
 | Testes ignorados | 0 |
 | **Total** | **1.863 testes aprovados** |
+| JAR executável | Gerado |
 | Construção Maven | **BUILD SUCCESS** |
 
 `OfficialVmGenerationTest` executou 12 testes, todos aprovados.
 
-A execução confirmou a regressão dos componentes anteriores, o empacotamento do JAR e os testes de integração.
+A execução verificou os componentes léxicos, sintáticos e de compilação VM, além do empacotamento e dos testes de integração da interface de linha de comando.
 
-Essas evidências correspondem ao estado funcional publicado no commit:
-
-[`0d389be81a2876ca7ac804085b49493104a96886`](https://github.com/0zzmandias/jackcompiler/commit/0d389be81a2876ca7ac804085b49493104a96886)
+Os resultados correspondem ao commit indicado e constituem uma evidência de validação reproduzível por meio dos comandos descritos neste documento.
 
 ## 8. Integração contínua
 
@@ -546,32 +550,28 @@ O workflow `.github/workflows/ci.yml` utiliza Java 21 (Temurin) e executa:
 mvn --batch-mode --no-transfer-progress clean verify
 ```
 
-O workflow foi utilizado com sucesso em entregas anteriores do projeto.
+A integração contínua utiliza o mesmo ciclo de verificação automatizada disponível para execução local.
 
-Durante o desenvolvimento da Parte 3, o GitHub impediu a inicialização de jobs por um bloqueio administrativo de cobrança da conta (*billing lock*).
+Durante a validação da Parte 3, a plataforma GitHub Actions impediu a inicialização dos jobs devido a uma restrição administrativa de cobrança (*billing lock*).
 
-A mensagem apresentada pela plataforma indicava que o job não havia sido iniciado devido ao estado de cobrança da conta. O problema foi encaminhado ao suporte do GitHub.
+Os testes não foram executados pelo runner nessas tentativas. Portanto, não há evidência de aprovação da CI para a revisão indicada na seção 7.
 
-Como o runner não chegou a executar as etapas de construção, esse bloqueio não demonstra defeito de compilação ou falha nos testes do JackCompiler.
-
-O desenvolvimento prosseguiu com validação local, conforme os resultados registrados na seção 7.
-
-**Situação:** testes locais aprovados; execução da CI no estado final ainda pendente de liberação pela plataforma.
-
-Não foram realizadas alterações arbitrárias no workflow ou no código para contornar a restrição administrativa.
+A construção e os testes locais foram executados independentemente do GitHub Actions, com os resultados apresentados neste documento.
 
 ## 9. Alcance e limitações das evidências
 
-Os testes automatizados demonstram conformidade nos cenários exercitados e verificam a preservação dos contratos das entregas anteriores.
+Os testes automatizados demonstram conformidade nos cenários exercitados e verificam os contratos dos componentes léxicos, sintáticos e de compilação VM.
 
 As comparações XML utilizam referências oficiais independentes da implementação.
 
-Os testes de VM exercitam a geração de instruções, enquanto o VM Emulator confirma o comportamento dos seis programas selecionados.
+Os testes de VM verificam a geração de instruções, enquanto o Virtual Machine Emulator confirma o comportamento dos seis programas selecionados.
 
 A aprovação desses testes não representa prova formal de correção para todos os programas Jack possíveis.
 
 O conjunto também não equivale a uma validação completa de tipos entre classes, otimização ou execução de todo o ecossistema Jack.
 
-As decisões técnicas estão em [architecture.md](architecture.md), e a matriz de requisitos está em [acceptance.md](acceptance.md).
+As decisões arquiteturais e os contratos dos componentes estão descritos em [architecture.md](architecture.md).
 
-As instruções gerais de construção e utilização do programa encontram-se no [README.md](../README.md).
+A matriz de rastreabilidade de requisitos está em [acceptance.md](acceptance.md).
+
+As instruções gerais de construção e utilização encontram-se no [README.md](../README.md).
